@@ -67,17 +67,23 @@ function getProductInfo(account, productId) {
   };
 }
 
-// Dedupe: same transaction_id within 60s → ignore
-const recentTxs = new Map();
-function isDuplicate(account, txId) {
-  const key = `${account}:${txId}`;
-  const now = Date.now();
-  for (const [k, t] of recentTxs) {
-    if (now - t > 60_000) recentTxs.delete(k);
-  }
-  if (recentTxs.has(key)) return true;
-  recentTxs.set(key, now);
-  return false;
+// Dedupe + polling fallback: persistent set of transaction_ids per store.
+// Primed at startup with today's IDs (no broadcast). Both webhook and poller
+// call markSeen — first hit broadcasts, subsequent ones are dropped.
+const seenTxs = new Map(); // account -> Set<string>
+
+function getSeenSet(account) {
+  let s = seenTxs.get(account);
+  if (!s) { s = new Set(); seenTxs.set(account, s); }
+  return s;
+}
+
+function markSeen(account, txId) {
+  const set = getSeenSet(account);
+  const key = String(txId);
+  if (set.has(key)) return false;
+  set.add(key);
+  return true;
 }
 
 function broadcast(data) {
@@ -113,19 +119,15 @@ function durationSeconds(start, end) {
   return diff >= 0 ? diff : null;
 }
 
-// ─── Webhook: /webhook/:account (or /webhook for single-store) ─────────────
-async function handleWebhook(store, req, res) {
-  const { object, object_id, action } = req.body;
-  res.json({ status: 'accept' });
-
-  if (object !== 'transaction') return;
-  // Only react to closed orders. Poster fires `added`/`changed`/`transformed` for the same tx.
-  if (action && action !== 'changed' && action !== 'transformed') return;
-  if (isDuplicate(store.account, object_id)) return;
-
+async function processTransaction(store, transactionId, source = 'webhook') {
+  if (!markSeen(store.account, transactionId)) return;
   try {
-    const { tx, dash } = await fetchTransaction(store, object_id);
-    if (!tx) return;
+    const { tx, dash } = await fetchTransaction(store, transactionId);
+    if (!tx) {
+      // Could not fetch (not closed yet?) — un-mark so a later poll/webhook can retry
+      getSeenSet(store.account).delete(String(transactionId));
+      return;
+    }
 
     const clientName = dash && (dash.client_firstname || dash.client_lastname)
       ? [dash.client_firstname, dash.client_lastname].filter(Boolean).join(' ').trim()
@@ -159,10 +161,58 @@ async function handleWebhook(store, req, res) {
     };
 
     broadcast(result);
-    console.log(`🛒 [${store.label}] #${result.transaction_id} | ${result.sum} грн | ${result.products.length} позицій${result.comment ? ' | 💬' : ''}`);
+    console.log(`🛒 [${store.label}] (${source}) #${result.transaction_id} | ${result.sum} грн | ${result.products.length} позицій${result.comment ? ' | 💬' : ''}`);
   } catch (err) {
+    getSeenSet(store.account).delete(String(transactionId));
     console.error(`[${store.label}] Помилка:`, err.message);
   }
+}
+
+// ─── Polling fallback: catch transactions whose webhook never arrived ──────
+async function pollStore(store) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await axios.get(
+      `${API}/dash.getTransactions?token=${store.token}&dateFrom=${today}&dateTo=${today}&per_page=200`
+    );
+    const list = res.data.response?.data || res.data.response || [];
+    const seen = getSeenSet(store.account);
+    for (const t of list) {
+      if (!seen.has(String(t.transaction_id))) {
+        await processTransaction(store, t.transaction_id, 'poll');
+      }
+    }
+  } catch (err) {
+    console.error(`[${store.label}] poll error:`, err.message);
+  }
+}
+
+// At startup, prime the seen set with today's transactions so we don't
+// re-broadcast everything that already happened before the server came up.
+async function primeSeen(store, attempt = 0) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await axios.get(
+      `${API}/dash.getTransactions?token=${store.token}&dateFrom=${today}&dateTo=${today}&per_page=500`
+    );
+    const list = res.data.response?.data || res.data.response || [];
+    const set = getSeenSet(store.account);
+    list.forEach(t => set.add(String(t.transaction_id)));
+    console.log(`✅ [${store.label}] seen primed: ${list.length} transactions`);
+  } catch (err) {
+    if (attempt < 3) return setTimeout(() => primeSeen(store, attempt + 1), 5000);
+    console.error(`[${store.label}] seen prime failed:`, err.message);
+  }
+}
+
+// ─── Webhook handler ────────────────────────────────────────────────────────
+async function handleWebhook(store, req, res) {
+  const { object, object_id, action } = req.body;
+  res.json({ status: 'accept' });
+  if (object !== 'transaction') return;
+  // Poster fires added/changed/transformed for the same tx — only react on close.
+  if (action && action !== 'changed' && action !== 'transformed') return;
+  await processTransaction(store, object_id, 'webhook');
 }
 
 // Multi-store: POST /webhook/:account
@@ -227,7 +277,9 @@ app.get('/debug', async (req, res) => {
       label: s.label,
       tokenPrefix: s.token ? s.token.slice(0, 12) + '...' : 'MISSING',
       cachedProducts: Object.keys(productCaches[s.account] || {}).length,
+      seen: getSeenSet(s.account).size,
     })),
+    pollIntervalSec: POLL_INTERVAL_MS / 1000,
     wsClients: wss.clients.size,
     env: {
       POSTER_APP_ID: process.env.POSTER_APP_ID || 'MISSING',
@@ -238,7 +290,7 @@ app.get('/debug', async (req, res) => {
   res.json(info);
 });
 
-// ─── Test (fires latest transaction from first store) ───────────────────────
+// ─── Test (re-broadcast latest transaction from a store) ────────────────────
 app.get('/test', async (req, res) => {
   const account = req.query.account || stores[0]?.account;
   const store = storeByAccount[account];
@@ -250,27 +302,12 @@ app.get('/test', async (req, res) => {
   );
   const list = apiRes.data.response?.data || [];
   const tx = list[0];
-
   if (!tx) return res.json({ error: 'Немає транзакцій сьогодні' });
 
-  const result = {
-    account: store.account,
-    store_label: store.label,
-    transaction_id: tx.transaction_id,
-    time: tx.date_close,
-    sum: parseFloat(tx.sum),
-    payed_cash: parseFloat(tx.payed_cash),
-    payed_card: parseFloat(tx.payed_card),
-    products: tx.products.map(p => ({
-      product_id: p.product_id,
-      name: getProductName(store.account, p.product_id),
-      quantity: parseFloat(p.num),
-      sum: parseFloat(p.product_sum),
-    })),
-  };
-
-  broadcast(result);
-  res.json({ status: 'sent', data: result });
+  // Bypass dedupe for /test
+  getSeenSet(store.account).delete(String(tx.transaction_id));
+  await processTransaction(store, tx.transaction_id, 'test');
+  res.json({ status: 'sent', transaction_id: tx.transaction_id });
 });
 
 wss.on('connection', (ws) => {
@@ -279,12 +316,18 @@ wss.on('connection', (ws) => {
 });
 
 // ─── Start ──────────────────────────────────────────────────────────────────
-Promise.all(stores.map(loadProductCache)).then(() => {
+const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '30000', 10);
+
+Promise.all(stores.map(loadProductCache)).then(async () => {
+  await Promise.all(stores.map(primeSeen));
+  for (const s of stores) setInterval(() => pollStore(s), POLL_INTERVAL_MS);
+
   server.listen(PORT, () => {
     console.log(`🚀 Сервер: http://localhost:${PORT}`);
     stores.forEach(s => {
       console.log(`📡 [${s.label}] Webhook: http://localhost:${PORT}/webhook/${s.account}`);
     });
+    console.log(`🔁 Polling fallback: every ${POLL_INTERVAL_MS / 1000}s`);
     console.log(`🧪 Тест: http://localhost:${PORT}/test`);
   });
 });
