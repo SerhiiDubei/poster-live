@@ -17,8 +17,15 @@ const PORT = process.env.PORT || 3000;
 const API = 'https://joinposter.com/api';
 
 // ─── Multi-store support ────────────────────────────────────────────────────
-// Load stores from config/stores.json, fall back to single POSTER_TOKEN env var
+// Priority: STORES_JSON env var → config/stores.json → POSTER_TOKEN single-store
 function loadStores() {
+  if (process.env.STORES_JSON) {
+    try {
+      return JSON.parse(process.env.STORES_JSON);
+    } catch (err) {
+      console.error('STORES_JSON parse error:', err.message);
+    }
+  }
   const configPath = path.join(__dirname, 'config', 'stores.json');
   if (fs.existsSync(configPath)) {
     return JSON.parse(fs.readFileSync(configPath, 'utf8'));
