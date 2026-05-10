@@ -34,6 +34,13 @@
     }
     #status.connected { background: #0f2a0f; color: #4caf50; }
 
+    #session {
+      margin-left: auto;
+      font-size: 12px;
+      color: #555;
+    }
+    #session b { color: #888; font-weight: normal; }
+
     #stats {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -71,13 +78,15 @@
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 12px;
+      gap: 12px;
     }
 
     .card-id { font-size: 11px; color: #444; }
-    .card-time { font-size: 11px; color: #444; }
+    .card-time { font-size: 11px; color: #444; text-align: right; }
     .card-sum { font-size: 20px; color: #fff; }
+    .card-meta { font-size: 11px; color: #555; margin-top: 2px; }
 
-    .card-pay { display: flex; gap: 8px; margin-bottom: 12px; }
+    .card-pay { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 
     .badge {
       font-size: 11px;
@@ -88,16 +97,43 @@
     }
     .badge.cash { background: #1a2a1a; color: #4caf50; }
     .badge.card { background: #1a1a2a; color: #5c8fff; }
+    .badge.dur  { background: #2a221a; color: #d4a14a; }
+    .badge.tbl  { background: #1f1a2a; color: #b48ff5; }
+    .badge.mode { background: #1a262a; color: #6cb8c4; }
+    .badge.guests { background: #221a1f; color: #c47b9e; }
+
+    .comment {
+      background: #161616;
+      border-left: 2px solid #d4a14a;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #c8b890;
+      font-style: italic;
+    }
+    .comment::before { content: '💬 '; }
 
     .products { border-top: 1px solid #1e1e1e; padding-top: 10px; }
 
     .product-row {
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      align-items: baseline;
       padding: 4px 0;
       font-size: 13px;
     }
     .product-name { color: #ccc; }
+    .product-category {
+      display: inline-block;
+      font-size: 10px;
+      color: #777;
+      background: #1a1a1a;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
     .product-qty  { color: #555; }
     .product-sum  { color: #888; }
 
@@ -114,6 +150,7 @@
 <header>
   <h1>POSTER LIVE</h1>
   <div id="status">● відключено</div>
+  <div id="session">Сесія: <b id="session-time">00:00:00</b></div>
 </header>
 
 <div id="stats">
@@ -138,13 +175,29 @@
 <script>
   let count = 0;
   let total = 0;
+  const seenTxIds = new Set();
 
-  const statusEl   = document.getElementById('status');
-  const feedEl     = document.getElementById('feed');
-  const emptyEl    = document.getElementById('empty');
-  const statCount  = document.getElementById('stat-count');
-  const statTotal  = document.getElementById('stat-total');
-  const statLast   = document.getElementById('stat-last');
+  const statusEl    = document.getElementById('status');
+  const feedEl      = document.getElementById('feed');
+  const emptyEl     = document.getElementById('empty');
+  const statCount   = document.getElementById('stat-count');
+  const statTotal   = document.getElementById('stat-total');
+  const statLast    = document.getElementById('stat-last');
+  const sessionTime = document.getElementById('session-time');
+
+  // Active session timer
+  const sessionStart = Date.now();
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function formatHMS(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }
+  setInterval(() => {
+    const sec = Math.floor((Date.now() - sessionStart) / 1000);
+    sessionTime.textContent = formatHMS(sec);
+  }, 1000);
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -153,35 +206,56 @@
     return e;
   }
 
+  function serviceModeLabel(m) {
+    if (m === 1) return 'у залі';
+    if (m === 2) return 'на виніс';
+    if (m === 3) return 'доставка';
+    return null;
+  }
+
   function buildCard(tx) {
     const card = el('div', 'card new');
 
     // Header
     const header = el('div', 'card-header');
-    const left   = el('div');
+    const left = el('div');
     left.appendChild(el('div', 'card-id',  '#' + tx.transaction_id));
     left.appendChild(el('div', 'card-sum', tx.sum.toFixed(2) + ' грн'));
+    if (tx.client) left.appendChild(el('div', 'card-meta', '👤 ' + tx.client));
     header.appendChild(left);
-    header.appendChild(el('div', 'card-time', tx.time));
+
+    const right = el('div');
+    right.appendChild(el('div', 'card-time', tx.time || ''));
+    if (tx.date_start) right.appendChild(el('div', 'card-meta', 'старт: ' + tx.date_start.slice(11, 16)));
+    header.appendChild(right);
     card.appendChild(header);
 
-    // Payment badges
+    // Badges row: payment + duration + table + mode + guests
     const pay = el('div', 'card-pay');
-    if (tx.payed_cash > 0) {
-      pay.appendChild(el('span', 'badge cash', 'готівка ' + tx.payed_cash + ' грн'));
-    }
-    if (tx.payed_card > 0) {
-      pay.appendChild(el('span', 'badge card', 'картка ' + tx.payed_card + ' грн'));
-    }
-    card.appendChild(pay);
+    if (tx.payed_cash > 0) pay.appendChild(el('span', 'badge cash', 'готівка ' + tx.payed_cash + ' грн'));
+    if (tx.payed_card > 0) pay.appendChild(el('span', 'badge card', 'картка ' + tx.payed_card + ' грн'));
+    if (tx.duration_sec != null) pay.appendChild(el('span', 'badge dur', '⏱ ' + formatHMS(tx.duration_sec)));
+    if (tx.table) pay.appendChild(el('span', 'badge tbl', '🪑 ' + tx.table));
+    if (tx.guests) pay.appendChild(el('span', 'badge guests', '👥 ' + tx.guests));
+    const modeLabel = serviceModeLabel(tx.service_mode);
+    if (modeLabel) pay.appendChild(el('span', 'badge mode', modeLabel));
+    if (pay.children.length) card.appendChild(pay);
+
+    // Comment
+    if (tx.comment) card.appendChild(el('div', 'comment', tx.comment));
 
     // Products
     const products = el('div', 'products');
     tx.products.forEach(p => {
       const row = el('div', 'product-row');
-      row.appendChild(el('span', 'product-name', p.name));
-      row.appendChild(el('span', 'product-qty',  '× ' + p.quantity));
-      row.appendChild(el('span', 'product-sum',  p.sum + ' грн'));
+      const nameWrap = el('span', 'product-name', p.name);
+      if (p.category) {
+        const cat = el('span', 'product-category', p.category);
+        nameWrap.appendChild(cat);
+      }
+      row.appendChild(nameWrap);
+      row.appendChild(el('span', 'product-qty', '× ' + p.quantity));
+      row.appendChild(el('span', 'product-sum', p.sum + ' грн'));
       products.appendChild(row);
     });
     card.appendChild(products);
@@ -190,6 +264,9 @@
   }
 
   function addTransaction(tx) {
+    if (seenTxIds.has(tx.transaction_id)) return; // client-side dedupe
+    seenTxIds.add(tx.transaction_id);
+
     emptyEl.style.display = 'none';
 
     count++;

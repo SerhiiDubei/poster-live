@@ -48,7 +48,10 @@ async function loadProductCache(store) {
     const products = res.data.response || [];
     productCaches[store.account] = {};
     products.forEach(p => {
-      productCaches[store.account][String(p.product_id)] = p.product_name;
+      productCaches[store.account][String(p.product_id)] = {
+        name: p.product_name,
+        category: p.category_name || null,
+      };
     });
     console.log(`📦 [${store.label}] Кеш завантажено: ${products.length} продуктів`);
   } catch (err) {
@@ -56,8 +59,25 @@ async function loadProductCache(store) {
   }
 }
 
-function getProductName(account, productId) {
-  return productCaches[account]?.[String(productId)] || `Product #${productId}`;
+function getProductInfo(account, productId) {
+  const e = productCaches[account]?.[String(productId)];
+  return {
+    name: e?.name || `Product #${productId}`,
+    category: e?.category || null,
+  };
+}
+
+// Dedupe: same transaction_id within 60s → ignore
+const recentTxs = new Map();
+function isDuplicate(account, txId) {
+  const key = `${account}:${txId}`;
+  const now = Date.now();
+  for (const [k, t] of recentTxs) {
+    if (now - t > 60_000) recentTxs.delete(k);
+  }
+  if (recentTxs.has(key)) return true;
+  recentTxs.set(key, now);
+  return false;
 }
 
 function broadcast(data) {
@@ -68,43 +88,78 @@ function broadcast(data) {
 }
 
 async function fetchTransaction(store, transactionId) {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const res = await axios.get(
-    `${API}/transactions.getTransactions?token=${store.token}&date_from=${today}&date_to=${today}`
-  );
-  const list = res.data.response?.data || [];
-  return list.find(t => String(t.transaction_id) === String(transactionId));
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCompact = today.replace(/-/g, '');
+
+  // Two requests in parallel: products + dash details (comment, date_start, table, guests)
+  const [txsRes, dashRes] = await Promise.all([
+    axios.get(`${API}/transactions.getTransactions?token=${store.token}&date_from=${todayCompact}&date_to=${todayCompact}`),
+    axios.get(`${API}/dash.getTransactions?token=${store.token}&dateFrom=${today}&dateTo=${today}&per_page=100`),
+  ]);
+
+  const list = txsRes.data.response?.data || [];
+  const dashList = dashRes.data.response?.data || dashRes.data.response || [];
+
+  const tx = list.find(t => String(t.transaction_id) === String(transactionId));
+  const dash = dashList.find(t => String(t.transaction_id) === String(transactionId));
+  return { tx, dash };
+}
+
+function durationSeconds(start, end) {
+  if (!start || !end) return null;
+  const a = new Date(start.replace(' ', 'T'));
+  const b = new Date(end.replace(' ', 'T'));
+  const diff = Math.round((b - a) / 1000);
+  return diff >= 0 ? diff : null;
 }
 
 // ─── Webhook: /webhook/:account (or /webhook for single-store) ─────────────
 async function handleWebhook(store, req, res) {
-  const { object, object_id } = req.body;
+  const { object, object_id, action } = req.body;
   res.json({ status: 'accept' });
 
   if (object !== 'transaction') return;
+  // Only react to closed orders. Poster fires `added`/`changed`/`transformed` for the same tx.
+  if (action && action !== 'changed' && action !== 'transformed') return;
+  if (isDuplicate(store.account, object_id)) return;
 
   try {
-    const tx = await fetchTransaction(store, object_id);
+    const { tx, dash } = await fetchTransaction(store, object_id);
     if (!tx) return;
+
+    const clientName = dash && (dash.client_firstname || dash.client_lastname)
+      ? [dash.client_firstname, dash.client_lastname].filter(Boolean).join(' ').trim()
+      : null;
 
     const result = {
       account: store.account,
       store_label: store.label,
       transaction_id: tx.transaction_id,
       time: tx.date_close,
+      date_start: dash?.date_start || null,
+      duration_sec: durationSeconds(dash?.date_start, tx.date_close),
       sum: parseFloat(tx.sum),
       payed_cash: parseFloat(tx.payed_cash),
       payed_card: parseFloat(tx.payed_card),
-      products: tx.products.map(p => ({
-        product_id: p.product_id,
-        name: getProductName(store.account, p.product_id),
-        quantity: parseFloat(p.num),
-        sum: parseFloat(p.product_sum),
-      })),
+      comment: dash?.transaction_comment || null,
+      table: dash?.table_name || null,
+      guests: dash?.guests_count != null ? parseInt(dash.guests_count, 10) : null,
+      service_mode: dash?.service_mode != null ? parseInt(dash.service_mode, 10) : null,
+      client: clientName,
+      products: tx.products.map(p => {
+        const info = getProductInfo(store.account, p.product_id);
+        return {
+          product_id: p.product_id,
+          name: info.name,
+          category: info.category,
+          quantity: parseFloat(p.num),
+          sum: parseFloat(p.product_sum),
+        };
+      }),
     };
 
     broadcast(result);
-    console.log(`🛒 [${store.label}] #${result.transaction_id} | ${result.sum} грн | ${result.products.length} позицій`);
+    console.log(`🛒 [${store.label}] #${result.transaction_id} | ${result.sum} грн | ${result.products.length} позицій${result.comment ? ' | 💬' : ''}`);
   } catch (err) {
     console.error(`[${store.label}] Помилка:`, err.message);
   }
