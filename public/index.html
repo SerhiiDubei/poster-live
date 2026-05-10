@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Poster Live</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid #222;
+      padding-bottom: 16px;
+    }
+
+    h1 { font-size: 18px; font-weight: normal; letter-spacing: 0.1em; color: #fff; }
+
+    #status {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: #1a1a1a;
+      color: #555;
+    }
+    #status.connected { background: #0f2a0f; color: #4caf50; }
+
+    #stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .stat {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .stat-label { font-size: 11px; color: #555; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 24px; color: #fff; }
+
+    #feed { display: flex; flex-direction: column; gap: 10px; }
+
+    .card {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 8px;
+      padding: 16px;
+      animation: slideIn 0.3s ease;
+    }
+    .card.new { border-color: #2a3a2a; }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .card-id { font-size: 11px; color: #444; }
+    .card-time { font-size: 11px; color: #444; }
+    .card-sum { font-size: 20px; color: #fff; }
+
+    .card-pay { display: flex; gap: 8px; margin-bottom: 12px; }
+
+    .badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #1a1a1a;
+      color: #666;
+    }
+    .badge.cash { background: #1a2a1a; color: #4caf50; }
+    .badge.card { background: #1a1a2a; color: #5c8fff; }
+
+    .products { border-top: 1px solid #1e1e1e; padding-top: 10px; }
+
+    .product-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+    .product-name { color: #ccc; }
+    .product-qty  { color: #555; }
+    .product-sum  { color: #888; }
+
+    #empty {
+      text-align: center;
+      padding: 60px 0;
+      color: #333;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>POSTER LIVE</h1>
+  <div id="status">● відключено</div>
+</header>
+
+<div id="stats">
+  <div class="stat">
+    <div class="stat-label">Транзакцій</div>
+    <div class="stat-value" id="stat-count">0</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Загальна сума</div>
+    <div class="stat-value" id="stat-total">0 грн</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Остання покупка</div>
+    <div class="stat-value" id="stat-last">—</div>
+  </div>
+</div>
+
+<div id="feed">
+  <div id="empty">Очікую транзакції...</div>
+</div>
+
+<script>
+  let count = 0;
+  let total = 0;
+
+  const statusEl   = document.getElementById('status');
+  const feedEl     = document.getElementById('feed');
+  const emptyEl    = document.getElementById('empty');
+  const statCount  = document.getElementById('stat-count');
+  const statTotal  = document.getElementById('stat-total');
+  const statLast   = document.getElementById('stat-last');
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls)  e.className   = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function buildCard(tx) {
+    const card = el('div', 'card new');
+
+    // Header
+    const header = el('div', 'card-header');
+    const left   = el('div');
+    left.appendChild(el('div', 'card-id',  '#' + tx.transaction_id));
+    left.appendChild(el('div', 'card-sum', tx.sum.toFixed(2) + ' грн'));
+    header.appendChild(left);
+    header.appendChild(el('div', 'card-time', tx.time));
+    card.appendChild(header);
+
+    // Payment badges
+    const pay = el('div', 'card-pay');
+    if (tx.payed_cash > 0) {
+      pay.appendChild(el('span', 'badge cash', 'готівка ' + tx.payed_cash + ' грн'));
+    }
+    if (tx.payed_card > 0) {
+      pay.appendChild(el('span', 'badge card', 'картка ' + tx.payed_card + ' грн'));
+    }
+    card.appendChild(pay);
+
+    // Products
+    const products = el('div', 'products');
+    tx.products.forEach(p => {
+      const row = el('div', 'product-row');
+      row.appendChild(el('span', 'product-name', p.name));
+      row.appendChild(el('span', 'product-qty',  '× ' + p.quantity));
+      row.appendChild(el('span', 'product-sum',  p.sum + ' грн'));
+      products.appendChild(row);
+    });
+    card.appendChild(products);
+
+    return card;
+  }
+
+  function addTransaction(tx) {
+    emptyEl.style.display = 'none';
+
+    count++;
+    total += tx.sum;
+
+    statCount.textContent = count;
+    statTotal.textContent = total.toFixed(0) + ' грн';
+    statLast.textContent  = tx.sum.toFixed(0) + ' грн';
+
+    const card = buildCard(tx);
+    feedEl.insertBefore(card, feedEl.firstChild);
+    setTimeout(() => card.classList.remove('new'), 3000);
+  }
+
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(proto + '//' + location.host);
+
+    ws.onopen = () => {
+      statusEl.textContent = '● підключено';
+      statusEl.className   = 'connected';
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = '● відключено';
+      statusEl.className   = '';
+      setTimeout(connect, 3000);
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        addTransaction(JSON.parse(e.data));
+      } catch (_) {}
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>
