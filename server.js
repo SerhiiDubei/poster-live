@@ -481,5 +481,20 @@ Promise.all(stores.map(loadProductCache)).then(async () => {
     });
     console.log(`🔁 Polling fallback: every ${POLL_INTERVAL_MS / 1000}s`);
     console.log(`🧪 Тест: http://localhost:${PORT}/test`);
+
+    // ─── Auto-emulation (enabled via AUTO_EMULATE=true env var) ────────────
+    if (process.env.AUTO_EMULATE === 'true' && stores.length > 0) {
+      const store = stores[0];
+      const scheduleEmulate = () => {
+        const delay = rand(15000, 120000);
+        setTimeout(async () => {
+          const fakeId = 900000 + rand(1, 99999);
+          await processTransaction(store, fakeId, 'auto-emulate');
+          scheduleEmulate();
+        }, delay);
+      };
+      scheduleEmulate();
+      console.log(`🎭 Auto-emulate: ON (15–120s random interval) [${store.label}]`);
+    }
   });
 });
