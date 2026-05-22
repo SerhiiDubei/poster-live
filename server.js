@@ -127,6 +127,17 @@ function durationSeconds(start, end) {
 async function processTransaction(store, transactionId, source = 'webhook') {
   if (!markSeen(store.account, transactionId)) return;
   try {
+    // Emulated transaction IDs (>900000) — skip real API, generate fake data
+    if (Number(transactionId) > 900000) {
+      const tx = buildEmulatedTransaction(store.account, store.label,
+        Object.keys(productCaches[store.account] || {}).length > 0
+          ? Object.entries(productCaches[store.account]).map(([id, info]) => ({ product_id: id, ...info, price: info.price > 0 ? info.price : rand(40, 250) }))
+          : FAKE_PRODUCTS
+      );
+      broadcast(tx);
+      console.log(`🎭 [${store.label}] (${source}) #${tx.transaction_id} | ${tx.sum} грн | ${tx.products.length} позицій`);
+      return;
+    }
     const { tx, dash } = await fetchTransaction(store, transactionId);
     if (!tx) {
       // Could not fetch (not closed yet?) — un-mark so a later poll/webhook can retry
@@ -340,25 +351,19 @@ function buildEmulatedTransaction(account, label, productPool) {
   };
 }
 
-app.post('/api/emulate', (req, res) => {
+app.post('/api/emulate', async (req, res) => {
   const account = req.body?.account || stores[0]?.account || 'emulator';
   const store = storeByAccount[account];
-  const label = store?.label || 'Emulator';
+  if (!store) return res.status(404).json({ error: 'No store found' });
 
-  const cache = productCaches[account];
-  const productPool = cache && Object.keys(cache).length > 0
-    ? Object.entries(cache).map(([id, info]) => ({
-        product_id: id,
-        name: info.name,
-        category: info.category,
-        price: info.price > 0 ? info.price : rand(40, 250),
-      }))
-    : FAKE_PRODUCTS;
+  // Generate a fake transaction ID (>900000 triggers emulated path in processTransaction)
+  const fakeId = 900000 + rand(1, 99999);
 
-  const tx = buildEmulatedTransaction(account, label, productPool);
-  broadcast(tx);
-  console.log(`🎭 [${label}] emulated #${tx.transaction_id} | ${tx.sum} грн | ${tx.products.length} позицій`);
-  res.json({ status: 'ok', transaction_id: tx.transaction_id, sum: tx.sum, products: tx.products });
+  // Go through the full webhook pipeline — same path as a real Poster webhook
+  await processTransaction(store, fakeId, 'emulate');
+
+  const tx = lastTransaction;
+  res.json({ status: 'ok', transaction_id: tx?.transaction_id, sum: tx?.sum, products: tx?.products });
 });
 
 app.get('/emulator', (req, res) => {
