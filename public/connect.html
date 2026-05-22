@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Poster Live — Connect</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      padding: 24px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+      border-bottom: 1px solid #222;
+      padding-bottom: 16px;
+    }
+
+    h1 { font-size: 18px; font-weight: normal; letter-spacing: 0.1em; color: #fff; }
+    .tag {
+      font-size: 11px; padding: 3px 10px; border-radius: 20px;
+      background: #1a1a2a; color: #5c8fff;
+    }
+    a.back { margin-left: auto; font-size: 12px; color: #444; text-decoration: none; }
+    a.back:hover { color: #888; }
+
+    h2 {
+      font-size: 12px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 14px;
+      margin-top: 28px;
+    }
+    h2:first-of-type { margin-top: 0; }
+
+    .panel {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .url-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .url-box {
+      flex: 1;
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 5px;
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 14px;
+      color: #4caf50;
+      word-break: break-all;
+    }
+    .copy-btn {
+      padding: 10px 16px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 5px;
+      color: #666;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .copy-btn:hover { color: #aaa; border-color: #444; }
+    .copy-btn.copied { color: #4caf50; border-color: #2a3a2a; }
+
+    .note {
+      font-size: 12px;
+      color: #444;
+      margin-top: 10px;
+      line-height: 1.8;
+    }
+    .note a { color: #5c8fff; text-decoration: none; }
+    .note a:hover { text-decoration: underline; }
+    .note code {
+      background: #1a1a1a;
+      padding: 1px 6px;
+      border-radius: 3px;
+      color: #d4a14a;
+    }
+
+    .ws-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 14px;
+    }
+    .ws-status.connected { color: #4caf50; }
+    .ws-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #333;
+    }
+    .ws-status.connected .ws-dot { background: #4caf50; }
+
+    pre {
+      background: #0d0d0d;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 16px;
+      font-family: inherit;
+      font-size: 12px;
+      color: #ccc;
+      overflow-x: auto;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* syntax colors applied via <span> on pre-escaped content */
+    .tok-key  { color: #5c8fff; }
+    .tok-str  { color: #4caf50; }
+    .tok-num  { color: #d4a14a; }
+    .tok-null { color: #555; }
+    .tok-bool { color: #c47b9e; }
+
+    .steps { counter-reset: step; list-style: none; padding: 0; }
+    .steps li {
+      counter-increment: step;
+      display: flex;
+      gap: 14px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: #888;
+      line-height: 1.6;
+    }
+    .steps li::before {
+      content: counter(step);
+      min-width: 22px; height: 22px;
+      background: #1a1a2a;
+      color: #5c8fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .field-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .field-table th {
+      text-align: left; color: #444; font-weight: normal;
+      padding: 6px 10px; border-bottom: 1px solid #1a1a1a;
+    }
+    .field-table td {
+      padding: 7px 10px; border-bottom: 1px solid #141414; color: #888;
+      vertical-align: top;
+    }
+    .field-table td:first-child { color: #5c8fff; }
+    .field-table td:nth-child(2) { color: #d4a14a; }
+
+    #live-packet { min-height: 60px; }
+
+    .pre-wrap { position: relative; }
+    .pre-wrap .copy-btn {
+      position: absolute; top: 10px; right: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>POSTER LIVE &#8212; CONNECT</h1>
+  <div class="tag">для розробників</div>
+  <a class="back" href="/">&#8592; Live Feed</a>
+</header>
+
+<!-- WebSocket URL -->
+<h2>WebSocket endpoint</h2>
+<div class="panel">
+  <div class="url-row">
+    <div class="url-box" id="ws-url">ws://localhost:3000</div>
+    <button class="copy-btn" id="copy-ws">Копіювати</button>
+  </div>
+  <div class="note">
+    Якщо Юрко підключається <strong style="color:#f0f0f0;">ззовні</strong> &#8212; потрібен публічний тунель:<br>
+    1. Встанови <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a><br>
+    2. Запусти: <code>ngrok http 3000</code><br>
+    3. Використай URL виду <code>wss://xxxx.ngrok-free.app</code>
+  </div>
+</div>
+
+<!-- HTTP polling -->
+<h2>HTTP polling (альтернатива)</h2>
+<div class="panel">
+  <div class="url-row">
+    <div class="url-box" id="http-url">http://localhost:3000/api/latest</div>
+    <button class="copy-btn" id="copy-http">Копіювати</button>
+  </div>
+  <div class="note">
+    Повертає останню транзакцію як JSON. Підходить для інструментів без WebSocket.<br>
+    Схема даних: <code>GET /api/schema</code>
+  </div>
+</div>
+
+<!-- Live packet -->
+<h2>Живий пакет даних</h2>
+<div class="panel">
+  <div class="ws-status" id="ws-status">
+    <span class="ws-dot"></span>
+    <span id="ws-status-text">відключено</span>
+  </div>
+  <pre id="live-packet">Очікую першу транзакцію...</pre>
+</div>
+
+<!-- Schema -->
+<h2>Структура даних</h2>
+<div class="panel">
+  <table class="field-table">
+    <tr><th>Поле</th><th>Тип</th><th>Опис</th></tr>
+    <tr><td>transaction_id</td><td>number</td><td>Унікальний ID транзакції</td></tr>
+    <tr><td>store_label</td><td>string</td><td>Назва закладу</td></tr>
+    <tr><td>time</td><td>string</td><td>Час закриття (YYYY-MM-DD HH:MM:SS)</td></tr>
+    <tr><td>date_start</td><td>string|null</td><td>Час відкриття замовлення</td></tr>
+    <tr><td>duration_sec</td><td>number|null</td><td>Тривалість у секундах</td></tr>
+    <tr><td>sum</td><td>number</td><td>Загальна сума (грн)</td></tr>
+    <tr><td>payed_cash</td><td>number</td><td>Сплачено готівкою</td></tr>
+    <tr><td>payed_card</td><td>number</td><td>Сплачено карткою</td></tr>
+    <tr><td>table</td><td>string|null</td><td>Назва столика</td></tr>
+    <tr><td>guests</td><td>number|null</td><td>Кількість гостей</td></tr>
+    <tr><td>service_mode</td><td>1|2|3|null</td><td>1=зал, 2=виніс, 3=доставка</td></tr>
+    <tr><td>comment</td><td>string|null</td><td>Коментар до замовлення</td></tr>
+    <tr><td>products[].name</td><td>string</td><td>Назва страви/напою</td></tr>
+    <tr><td>products[].category</td><td>string|null</td><td>Категорія меню</td></tr>
+    <tr><td>products[].quantity</td><td>number</td><td>Кількість</td></tr>
+    <tr><td>products[].sum</td><td>number</td><td>Сума по позиції</td></tr>
+  </table>
+</div>
+
+<!-- TouchDesigner -->
+<h2>TouchDesigner &#8212; підключення</h2>
+<div class="panel">
+  <ol class="steps">
+    <li>Додай у проект ноду <strong style="color:#f0f0f0;">WebSocket DAT</strong></li>
+    <li>Параметр <strong style="color:#f0f0f0;">Network Address</strong> &#8594; вкажи WebSocket URL зверху</li>
+    <li>Встанови <strong style="color:#f0f0f0;">Active</strong> = On</li>
+    <li>У параметрі <strong style="color:#f0f0f0;">Callbacks DAT</strong> &#8594; вкажи Script DAT з кодом нижче</li>
+  </ol>
+
+  <div style="margin-top:16px;">
+    <div style="font-size:11px; color:#444; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.08em;">
+      Python-скрипт для WebSocket DAT (Callbacks)
+    </div>
+    <div class="pre-wrap">
+      <pre id="td-script">import json
+
+def onReceiveText(dat, rowIndex, message):
+    try:
+        tx = json.loads(message)
+
+        # Сума та оплата
+        total      = tx.get('sum', 0)
+        pay_cash   = tx.get('payed_cash', 0)
+        pay_card   = tx.get('payed_card', 0)
+        duration   = tx.get('duration_sec')   # секунди або None
+        tx_time    = tx.get('time', '')
+        store      = tx.get('store_label', '')
+        table      = tx.get('table')
+        guests     = tx.get('guests')
+        mode       = tx.get('service_mode')   # 1=зал 2=виніс 3=доставка
+
+        # Продукти
+        products   = tx.get('products', [])
+        prod_count = len(products)
+        categories = list({p.get('category') for p in products if p.get('category')})
+
+        # Зберігаємо у Storage для доступу з інших нод
+        storage = op('storage1')   # замінити на ім'я своєї Storage COMP
+        storage.store('tx',            tx)
+        storage.store('tx_sum',        total)
+        storage.store('tx_pay_cash',   pay_cash)
+        storage.store('tx_pay_card',   pay_card)
+        storage.store('tx_duration',   duration or 0)
+        storage.store('tx_prod_count', prod_count)
+        storage.store('tx_categories', categories)
+        storage.store('tx_table',      table or '')
+        storage.store('tx_guests',     guests or 0)
+        storage.store('tx_mode',       mode or 0)
+
+        print(f'[Poster] #{tx["transaction_id"]} | {total} грн | {prod_count} поз. | {store}')
+
+    except Exception as e:
+        print(f'[Poster] parse error: {e}')</pre>
+      <button class="copy-btn" id="copy-td">Копіювати</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ─── Copy helpers ──────────────────────────────────────────────────────────
+  function setupCopy(btnId, getText) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(getText()).then(() => {
+        btn.textContent = 'Скопійовано!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Копіювати'; btn.classList.remove('copied'); }, 2000);
+      });
+    });
+  }
+
+  // Set correct WS / HTTP URLs based on current host
+  const proto  = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl  = proto + '//' + location.host;
+  const httpUrl = location.origin + '/api/latest';
+
+  document.getElementById('ws-url').textContent   = wsUrl;
+  document.getElementById('http-url').textContent = httpUrl;
+
+  setupCopy('copy-ws',   () => document.getElementById('ws-url').textContent);
+  setupCopy('copy-http', () => document.getElementById('http-url').textContent);
+  setupCopy('copy-td',   () => document.getElementById('td-script').textContent);
+
+  // ─── Syntax highlight (safe: HTML-escape first, then add spans) ────────────
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function syntaxHighlight(obj) {
+    const raw = JSON.stringify(obj, null, 2);
+    const escaped = escapeHtml(raw);
+    return escaped.replace(
+      /(&quot;(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\&])*&quot;(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+      match => {
+        if (match.startsWith('&quot;')) {
+          if (/:$/.test(match)) return '<span class="tok-key">' + match + '</span>';
+          return '<span class="tok-str">' + match + '</span>';
+        }
+        if (match === 'true' || match === 'false') return '<span class="tok-bool">' + match + '</span>';
+        if (match === 'null') return '<span class="tok-null">' + match + '</span>';
+        return '<span class="tok-num">' + match + '</span>';
+      }
+    );
+  }
+
+  // ─── Live WebSocket ────────────────────────────────────────────────────────
+  const statusEl   = document.getElementById('ws-status');
+  const statusText = document.getElementById('ws-status-text');
+  const livePacket = document.getElementById('live-packet');
+
+  function renderPacket(tx) {
+    livePacket.innerHTML = syntaxHighlight(tx);
+  }
+
+  function connect() {
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      statusEl.className  = 'ws-status connected';
+      statusText.textContent = 'підключено';
+    };
+
+    ws.onclose = () => {
+      statusEl.className  = 'ws-status';
+      statusText.textContent = 'відключено — перепідключення...';
+      setTimeout(connect, 3000);
+    };
+
+    ws.onmessage = (e) => {
+      try { renderPacket(JSON.parse(e.data)); } catch (_) {}
+    };
+  }
+
+  connect();
+
+  // Pre-load last transaction via REST if available
+  fetch('/api/latest')
+    .then(r => r.ok ? r.json() : null)
+    .then(tx => { if (tx && tx.transaction_id) renderPacket(tx); })
+    .catch(() => {});
+</script>
+</body>
+</html>

@@ -48,9 +48,11 @@ async function loadProductCache(store) {
     const products = res.data.response || [];
     productCaches[store.account] = {};
     products.forEach(p => {
+      const rawPrice = p.spots?.[0]?.price ?? p.price ?? 0;
       productCaches[store.account][String(p.product_id)] = {
         name: p.product_name,
         category: p.category_name || null,
+        price: Math.round(rawPrice / 100),
       };
     });
     console.log(`📦 [${store.label}] Кеш завантажено: ${products.length} продуктів`);
@@ -86,7 +88,10 @@ function markSeen(account, txId) {
   return true;
 }
 
+let lastTransaction = null;
+
 function broadcast(data) {
+  lastTransaction = data;
   const msg = JSON.stringify(data);
   wss.clients.forEach(client => {
     if (client.readyState === 1) client.send(msg);
@@ -267,6 +272,148 @@ app.get('/oauth/callback', async (req, res) => {
     console.error('OAuth помилка:', err.response?.data || err.message);
     res.send('Помилка підключення: ' + JSON.stringify(err.response?.data || err.message));
   }
+});
+
+// ─── Emulator ───────────────────────────────────────────────────────────────
+const FAKE_PRODUCTS = [
+  { product_id: 1001, name: 'Еспресо', category: 'Кава', price: 45 },
+  { product_id: 1002, name: 'Капучіно', category: 'Кава', price: 65 },
+  { product_id: 1003, name: 'Латте', category: 'Кава', price: 75 },
+  { product_id: 1004, name: 'Флет Уайт', category: 'Кава', price: 70 },
+  { product_id: 1005, name: 'Круасан', category: 'Випічка', price: 55 },
+  { product_id: 1006, name: 'Чізкейк', category: 'Десерти', price: 120 },
+  { product_id: 1007, name: 'Борщ', category: 'Перші страви', price: 95 },
+  { product_id: 1008, name: 'Вареники з картоплею', category: 'Основні', price: 110 },
+  { product_id: 1009, name: 'Піца Маргарита', category: 'Піца', price: 185 },
+  { product_id: 1010, name: 'Лимонад домашній', category: 'Напої', price: 55 },
+  { product_id: 1011, name: 'Чай зелений', category: 'Напої', price: 40 },
+  { product_id: 1012, name: 'Сирники', category: 'Сніданки', price: 130 },
+  { product_id: 1013, name: 'Авокадо-тост', category: 'Сніданки', price: 115 },
+  { product_id: 1014, name: 'Курячий бургер', category: 'Бургери', price: 175 },
+  { product_id: 1015, name: 'Картопля фрі', category: 'Гарніри', price: 60 },
+];
+
+const FAKE_TABLES = ['Стіл 1', 'Стіл 2', 'Стіл 3', 'Стіл 4', 'Стіл 5', 'Барна стійка', 'Тераса 1', 'Тераса 2'];
+const FAKE_COMMENTS = [null, null, null, 'Без цибулі', 'Алергія на горіхи', 'Постійний гість', 'День народження'];
+
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function buildEmulatedTransaction(account, label, productPool) {
+  const now = new Date();
+  const durationSec = rand(180, 2700);
+  const dateStart = new Date(now - durationSec * 1000);
+
+  const fmt = d => d.toISOString().replace('T', ' ').slice(0, 19);
+
+  const count = rand(1, 5);
+  const shuffled = [...productPool].sort(() => Math.random() - 0.5).slice(0, count);
+  const products = shuffled.map(p => {
+    const qty = rand(1, 3);
+    return { product_id: p.product_id, name: p.name, category: p.category, quantity: qty, sum: p.price * qty };
+  });
+
+  const sum = products.reduce((acc, p) => acc + p.sum, 0);
+  const payCard = Math.random() > 0.45 ? sum : 0;
+  const payCash = payCard === 0 ? sum : 0;
+
+  const serviceMode = rand(1, 3);
+  const hasTable = serviceMode === 1;
+
+  return {
+    account,
+    store_label: label,
+    transaction_id: 900000 + rand(1, 99999),
+    time: fmt(now),
+    date_start: fmt(dateStart),
+    duration_sec: durationSec,
+    sum,
+    payed_cash: payCash,
+    payed_card: payCard,
+    comment: pick(FAKE_COMMENTS),
+    table: hasTable ? pick(FAKE_TABLES) : null,
+    guests: hasTable ? rand(1, 6) : null,
+    service_mode: serviceMode,
+    client: null,
+    products,
+    _emulated: true,
+  };
+}
+
+app.post('/api/emulate', (req, res) => {
+  const account = req.body?.account || stores[0]?.account || 'emulator';
+  const store = storeByAccount[account];
+  const label = store?.label || 'Emulator';
+
+  const cache = productCaches[account];
+  const productPool = cache && Object.keys(cache).length > 0
+    ? Object.entries(cache).map(([id, info]) => ({
+        product_id: id,
+        name: info.name,
+        category: info.category,
+        price: info.price > 0 ? info.price : rand(40, 250),
+      }))
+    : FAKE_PRODUCTS;
+
+  const tx = buildEmulatedTransaction(account, label, productPool);
+  broadcast(tx);
+  console.log(`🎭 [${label}] emulated #${tx.transaction_id} | ${tx.sum} грн | ${tx.products.length} позицій`);
+  res.json({ status: 'ok', transaction_id: tx.transaction_id, sum: tx.sum, products: tx.products });
+});
+
+app.get('/emulator', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'emulator.html'));
+});
+
+// ─── Connect API (for external tools: TouchDesigner, MadMapper, etc.) ────────
+app.get('/api/products', (req, res) => {
+  const account = req.query.account || stores[0]?.account;
+  const cache = productCaches[account];
+  if (!cache) return res.json({ error: 'No cache for account', account });
+  const list = Object.entries(cache).map(([id, info]) => ({ product_id: id, ...info }));
+  res.json({ account, count: list.length, products: list });
+});
+
+app.post('/api/reload-menu', async (req, res) => {
+  const account = req.body?.account || stores[0]?.account;
+  const store = storeByAccount[account];
+  if (!store) return res.status(404).json({ error: 'Unknown account' });
+  await loadProductCache(store);
+  const count = Object.keys(productCaches[account] || {}).length;
+  res.json({ status: 'ok', account, count });
+});
+
+app.get('/api/latest', (req, res) => {
+  if (!lastTransaction) return res.status(404).json({ error: 'No transactions yet. Use /emulator to generate one.' });
+  res.json(lastTransaction);
+});
+
+app.get('/api/schema', (req, res) => {
+  res.json({
+    transaction_id: 123456,
+    account: 'store_account',
+    store_label: 'Store Name',
+    time: '2024-01-01 12:00:00',
+    date_start: '2024-01-01 11:45:00',
+    duration_sec: 900,
+    sum: 250.00,
+    payed_cash: 0,
+    payed_card: 250.00,
+    comment: null,
+    table: 'Стіл 3',
+    guests: 2,
+    service_mode: 1,
+    client: null,
+    products: [
+      { product_id: 101, name: 'Капучіно', category: 'Кава', quantity: 2, sum: 130 },
+      { product_id: 102, name: 'Круасан', category: 'Випічка', quantity: 1, sum: 55 },
+    ],
+    _emulated: false,
+  });
+});
+
+app.get('/connect', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'connect.html'));
 });
 
 // ─── Debug ──────────────────────────────────────────────────────────────────

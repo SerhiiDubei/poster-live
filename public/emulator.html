@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Poster Emulator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      border-bottom: 1px solid #222;
+      padding-bottom: 16px;
+    }
+
+    h1 { font-size: 18px; font-weight: normal; letter-spacing: 0.1em; color: #fff; }
+
+    .tag {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: #2a1a00;
+      color: #d4a14a;
+    }
+
+    a.back {
+      margin-left: auto;
+      font-size: 12px;
+      color: #444;
+      text-decoration: none;
+    }
+    a.back:hover { color: #888; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .panel {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .panel-title {
+      font-size: 11px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 14px;
+    }
+
+    button {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: #1a2a1a;
+      color: #4caf50;
+      border: 1px solid #2a3a2a;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: background 0.15s;
+    }
+    button:hover { background: #223222; }
+    button:active { background: #1a1a1a; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .toggle-label { font-size: 13px; color: #888; }
+
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      inset: 0;
+      background: #222;
+      border-radius: 24px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; top: 3px;
+      background: #555;
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+    input:checked + .slider { background: #1a2a1a; }
+    input:checked + .slider::before { transform: translateX(20px); background: #4caf50; }
+
+    .interval-info {
+      font-size: 12px;
+      color: #444;
+      margin-top: 10px;
+      min-height: 18px;
+    }
+    .interval-info .highlight { color: #d4a14a; }
+
+    #countdown-bar-wrap {
+      margin-top: 10px;
+      height: 3px;
+      background: #1a1a1a;
+      border-radius: 2px;
+      overflow: hidden;
+      display: none;
+    }
+    #countdown-bar {
+      height: 100%;
+      background: #d4a14a;
+      width: 100%;
+      transition: width 0.5s linear;
+    }
+
+    .log-wrap { }
+    .log-title {
+      font-size: 11px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .log-clear { color: #333; cursor: pointer; font-size: 11px; }
+    .log-clear:hover { color: #666; }
+
+    #log {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    .log-item {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 12px 14px;
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .log-top {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .log-source {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 3px;
+      background: #1a1a1a;
+      color: #555;
+    }
+    .log-source.manual { background: #1a2a1a; color: #4caf50; }
+    .log-source.auto   { background: #2a221a; color: #d4a14a; }
+
+    .log-id  { font-size: 12px; color: #666; }
+    .log-sum { font-size: 14px; color: #fff; text-align: right; }
+    .log-time { font-size: 11px; color: #333; text-align: right; }
+
+    .log-products {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      padding-top: 6px;
+      border-top: 1px solid #161616;
+    }
+
+    .prod-chip {
+      font-size: 11px;
+      padding: 2px 9px;
+      border-radius: 3px;
+      background: #171717;
+      color: #777;
+      white-space: nowrap;
+    }
+    .prod-chip .qty {
+      color: #444;
+      margin-left: 4px;
+    }
+
+    #empty-log {
+      text-align: center;
+      padding: 40px 0;
+      color: #2a2a2a;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>POSTER EMULATOR</h1>
+  <div class="tag">режим розробки</div>
+  <a class="back" href="/">&#8592; Live Feed</a>
+</header>
+
+<div class="panel" id="menu-panel" style="margin-bottom:16px;">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div class="panel-title" style="margin:0;">Меню Poster</div>
+    <div id="menu-status" style="font-size:12px; color:#555;">завантаження...</div>
+    <button id="btn-reload-menu" style="width:auto; padding:6px 14px; font-size:12px; margin-left:auto;">&#8635; Перезавантажити меню</button>
+  </div>
+</div>
+
+<div class="controls">
+
+  <div class="panel">
+    <div class="panel-title">Ручний режим</div>
+    <button id="btn-send">&#9658; Надіслати транзакцію</button>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Авто-режим</div>
+    <div class="toggle-row">
+      <span class="toggle-label">Автоматичні транзакції</span>
+      <label class="toggle">
+        <input type="checkbox" id="auto-toggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="interval-info" id="interval-info">Інтервал: 15–120 сек (рандомно)</div>
+    <div id="countdown-bar-wrap"><div id="countdown-bar"></div></div>
+  </div>
+
+</div>
+
+<div class="log-wrap panel">
+  <div class="log-title">
+    <span>Відправлені транзакції</span>
+    <span class="log-clear" id="log-clear">очистити</span>
+  </div>
+  <div id="log">
+    <div id="empty-log">Ще нічого не відправлено...</div>
+  </div>
+</div>
+
+<script>
+  const btnSend        = document.getElementById('btn-send');
+  const autoToggle     = document.getElementById('auto-toggle');
+  const intervalInfo   = document.getElementById('interval-info');
+  const menuStatusEl   = document.getElementById('menu-status');
+  const btnReloadMenu  = document.getElementById('btn-reload-menu');
+  const countdownWrap = document.getElementById('countdown-bar-wrap');
+  const countdownBar  = document.getElementById('countdown-bar');
+  const logEl        = document.getElementById('log');
+  const emptyLog     = document.getElementById('empty-log');
+  const logClear     = document.getElementById('log-clear');
+
+  let autoTimer    = null;
+  let countdownStart = 0;
+  let countdownTotal = 0;
+  let countdownTick  = null;
+
+  function randInterval() { return Math.floor(Math.random() * (120 - 15 + 1)) + 15; }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function nowTime() {
+    const d = new Date();
+    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  function setIntervalText(prefix, highlightText, suffix) {
+    intervalInfo.textContent = '';
+    if (prefix) intervalInfo.appendChild(document.createTextNode(prefix));
+    if (highlightText !== null) {
+      const s = document.createElement('span');
+      s.className = 'highlight';
+      s.textContent = highlightText;
+      intervalInfo.appendChild(s);
+    }
+    if (suffix) intervalInfo.appendChild(document.createTextNode(suffix));
+  }
+
+  async function sendEmulated(source) {
+    btnSend.disabled = true;
+    try {
+      const res = await fetch('/api/emulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') addLogItem(data, source);
+    } catch (e) {
+      console.error('emulate error', e);
+    } finally {
+      btnSend.disabled = false;
+    }
+  }
+
+  function addLogItem(data, source) {
+    emptyLog.style.display = 'none';
+    const item = document.createElement('div');
+    item.className = 'log-item';
+
+    // Top row: badge · id · sum · time
+    const top = document.createElement('div');
+    top.className = 'log-top';
+
+    const srcBadge = document.createElement('span');
+    srcBadge.className = 'log-source ' + source;
+    srcBadge.textContent = source === 'manual' ? 'вручну' : 'авто';
+
+    const idEl = document.createElement('span');
+    idEl.className = 'log-id';
+    idEl.textContent = '#' + data.transaction_id;
+
+    const sumEl = document.createElement('span');
+    sumEl.className = 'log-sum';
+    sumEl.textContent = data.sum + ' грн';
+
+    const timeEl = document.createElement('span');
+    timeEl.className = 'log-time';
+    timeEl.textContent = nowTime();
+
+    top.append(srcBadge, idEl, sumEl, timeEl);
+    item.appendChild(top);
+
+    // Products row
+    const products = data.products || [];
+    if (products.length > 0) {
+      const prods = document.createElement('div');
+      prods.className = 'log-products';
+      products.forEach(p => {
+        const chip = document.createElement('span');
+        chip.className = 'prod-chip';
+        chip.appendChild(document.createTextNode(p.name));
+        if (p.quantity > 1) {
+          const qty = document.createElement('span');
+          qty.className = 'qty';
+          qty.textContent = '×' + p.quantity;
+          chip.appendChild(qty);
+        }
+        prods.appendChild(chip);
+      });
+      item.appendChild(prods);
+    }
+
+    logEl.insertBefore(item, logEl.firstChild);
+  }
+
+  function startCountdown(sec) {
+    countdownWrap.style.display = 'block';
+    countdownStart = Date.now();
+    countdownTotal = sec * 1000;
+    countdownBar.style.transition = 'none';
+    countdownBar.style.width = '100%';
+
+    clearInterval(countdownTick);
+    countdownTick = setInterval(() => {
+      const elapsed  = Date.now() - countdownStart;
+      const remaining = Math.max(0, countdownTotal - elapsed);
+      const pct = (remaining / countdownTotal) * 100;
+      countdownBar.style.transition = 'width 0.5s linear';
+      countdownBar.style.width = pct + '%';
+      const remSec = Math.ceil(remaining / 1000);
+      setIntervalText('Наступна через ', remSec + ' сек', '');
+    }, 500);
+  }
+
+  function stopCountdown() {
+    clearInterval(countdownTick);
+    countdownWrap.style.display = 'none';
+    setIntervalText('Інтервал: 15–120 сек (рандомно)', null, '');
+    countdownBar.style.width = '100%';
+  }
+
+  function scheduleNext() {
+    const interval = randInterval();
+    startCountdown(interval);
+    autoTimer = setTimeout(async () => {
+      await sendEmulated('auto');
+      if (autoToggle.checked) scheduleNext();
+    }, interval * 1000);
+  }
+
+  autoToggle.addEventListener('change', () => {
+    if (autoToggle.checked) {
+      scheduleNext();
+    } else {
+      clearTimeout(autoTimer);
+      stopCountdown();
+    }
+  });
+
+  btnSend.addEventListener('click', () => sendEmulated('manual'));
+
+  logClear.addEventListener('click', () => {
+    logEl.querySelectorAll('.log-item').forEach(el => el.remove());
+    emptyLog.style.display = '';
+  });
+
+  // ─── Menu status ────────────────────────────────────────────────────────────
+  async function loadMenuStatus() {
+    try {
+      const res = await fetch('/api/products');
+      if (!res.ok) { menuStatusEl.textContent = 'fake-продукти (нема токена)'; menuStatusEl.style.color = '#554433'; return; }
+      const data = await res.json();
+      if (data.error || !data.count) {
+        menuStatusEl.textContent = 'fake-продукти (нема токена або порожнє меню)';
+        menuStatusEl.style.color = '#554433';
+      } else {
+        menuStatusEl.textContent = data.count + ' позицій з Poster (' + data.account + ')';
+        menuStatusEl.style.color = '#4caf50';
+      }
+    } catch (_) {
+      menuStatusEl.textContent = 'fake-продукти (сервер недоступний)';
+      menuStatusEl.style.color = '#554433';
+    }
+  }
+
+  btnReloadMenu.addEventListener('click', async () => {
+    btnReloadMenu.disabled = true;
+    btnReloadMenu.textContent = '...';
+    try {
+      const res = await fetch('/api/reload-menu', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        menuStatusEl.textContent = data.count + ' позицій оновлено';
+        menuStatusEl.style.color = '#4caf50';
+      }
+    } catch (_) {
+      menuStatusEl.textContent = 'помилка оновлення';
+      menuStatusEl.style.color = '#cf6679';
+    } finally {
+      btnReloadMenu.disabled = false;
+      btnReloadMenu.textContent = '⟳ Перезавантажити меню';
+    }
+  });
+
+  loadMenuStatus();
+</script>
+</body>
+</html>
