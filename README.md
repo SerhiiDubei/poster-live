@@ -1,6 +1,25 @@
 # Poster Live — Real-time POS Webhook Server
 
-Node.js + WebSocket сервер, який приймає webhooks від Poster POS і транслює транзакції в реальному часі до клієнтів (браузер, TouchDesigner, тощо).
+> **TL;DR (EN):** Node.js + WebSocket server that receives Poster POS webhooks and broadcasts each sale in real time to connected clients — a live browser dashboard and TouchDesigner visuals. Multi-store, OAuth2 onboarding, deployable on Railway.
+
+## Що це таке, простими словами?
+
+Уяви кав'ярню. Щоразу, коли бариста пробиває чек, каса вміє «гукнути» про це в інтернет — таке повідомлення називається *webhook*. Цей сервер — вухо, яке ті гуки слухає.
+
+Почув «продали капучино за 95 грн» → тієї ж секунди передав усім, хто дивиться:
+
+- **у браузер** — на живе табло продажів (відкрив сторінку і бачиш чеки, що прилітають самі, без оновлення сторінки);
+- **у TouchDesigner** — програму для візуалізацій: можна, наприклад, щоб на стіні бару кожен проданий коктейль запалював анімацію.
+
+Тобто ланцюжок такий: *каса → цей сервер → екран*. Затримка — секунди. Закладів може бути кілька одразу — кожен зі своїм ключем.
+
+```mermaid
+flowchart LR
+    POS["🧾 Каса Poster POS"] -- "webhook: новий чек" --> S["poster-live<br/>Node.js сервер"]
+    NEW["🏪 Новий заклад"] -- "OAuth2<br/>/oauth/callback" --> S
+    S -- "WebSocket" --> B["🖥 Браузер:<br/>live-дашборд"]
+    S -- "WebSocket" --> TD["🎨 TouchDesigner:<br/>візуалізації"]
+```
 
 ## Можливості
 
@@ -47,7 +66,7 @@ npm start
 3. Додай до `config/stores.json`:
 ```json
 [
-  { "account": "bono888", "token": "748039:xxx", "label": "Bono Coffee" },
+  { "account": "demo-store", "token": "748039:xxx", "label": "Demo Coffee" },
   { "account": "newstore", "token": "999999:yyy", "label": "New Store" }
 ]
 ```
@@ -104,6 +123,8 @@ wss://your-server.railway.app
 ---
 
 ## Docs
+
+> Папка `docs/` — офлайн-копія публічної документації Poster API ([developer.joinposter.com](https://developer.joinposter.com)) для зручності розробки; це не авторські матеріали цього проекту.
 
 | Файл | Зміст |
 |---|---|
