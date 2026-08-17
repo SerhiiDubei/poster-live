@@ -42,10 +42,17 @@ const storeByAccount = Object.fromEntries(stores.map(s => [s.account, s]));
 // Product cache per store: { account: { product_id: name } }
 const productCaches = {};
 
-async function loadProductCache(store) {
+// Порожня відповідь тут — не виняток, а звичайний успішний запит без даних.
+// Без ретраю сервер лишився б із порожнім меню до ручного рестарту.
+async function loadProductCache(store, attempt = 0) {
+  const retry = () => new Promise(r => setTimeout(() => r(loadProductCache(store, attempt + 1)), 5000));
   try {
     const res = await axios.get(`${API}/menu.getProducts?token=${store.token}`);
     const products = res.data.response || [];
+    if (products.length === 0 && attempt < 3) {
+      console.warn(`[${store.label}] меню порожнє — повтор через 5с (спроба ${attempt + 1}/3)`);
+      return retry();
+    }
     productCaches[store.account] = {};
     products.forEach(p => {
       const rawPrice = p.spots?.[0]?.price ?? p.price ?? 0;
@@ -57,6 +64,10 @@ async function loadProductCache(store) {
     });
     console.log(`📦 [${store.label}] Кеш завантажено: ${products.length} продуктів`);
   } catch (err) {
+    if (attempt < 3) {
+      console.warn(`[${store.label}] помилка меню (${err.message}) — повтор через 5с (спроба ${attempt + 1}/3)`);
+      return retry();
+    }
     console.error(`[${store.label}] Помилка завантаження меню:`, err.message);
   }
 }
@@ -406,6 +417,10 @@ app.get('/taps', (req, res) => {
 
 app.get('/viz', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'viz.html'));
+});
+
+app.get('/maze', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'maze.html'));
 });
 
 // ─── Connect API (for external tools: TouchDesigner, MadMapper, etc.) ────────
