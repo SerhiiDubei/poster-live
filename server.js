@@ -124,7 +124,7 @@ function durationSeconds(start, end) {
   return diff >= 0 ? diff : null;
 }
 
-async function processTransaction(store, transactionId, source = 'webhook') {
+async function processTransaction(store, transactionId, source = 'webhook', opts = {}) {
   if (!markSeen(store.account, transactionId)) return;
   try {
     // Emulated transaction IDs (>900000) — skip real API, generate fake data
@@ -132,7 +132,8 @@ async function processTransaction(store, transactionId, source = 'webhook') {
       const tx = buildEmulatedTransaction(store.account, store.label,
         Object.keys(productCaches[store.account] || {}).length > 0
           ? Object.entries(productCaches[store.account]).map(([id, info]) => ({ product_id: id, ...info, price: info.price > 0 ? info.price : rand(40, 250) }))
-          : FAKE_PRODUCTS
+          : FAKE_PRODUCTS,
+        { ...opts, transactionId }
       );
       broadcast(tx);
       console.log(`🎭 [${store.label}] (${source}) #${tx.transaction_id} | ${tx.sum} грн | ${tx.products.length} позицій`);
@@ -310,19 +311,28 @@ const FAKE_COMMENTS = [null, null, null, 'Без цибулі', 'Алергія 
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-function buildEmulatedTransaction(account, label, productPool) {
+// opts.cart — pre-built line items (from /taps). When absent, the basket is random.
+// opts.transactionId — keep the id that was already marked as seen, instead of a new one.
+function buildEmulatedTransaction(account, label, productPool, opts = {}) {
   const now = new Date();
   const durationSec = rand(180, 2700);
   const dateStart = new Date(now - durationSec * 1000);
 
-  const fmt = d => d.toISOString().replace('T', ' ').slice(0, 19);
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+                   `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-  const count = rand(1, 5);
-  const shuffled = [...productPool].sort(() => Math.random() - 0.5).slice(0, count);
-  const products = shuffled.map(p => {
-    const qty = rand(1, 3);
-    return { product_id: p.product_id, name: p.name, category: p.category, quantity: qty, sum: p.price * qty };
-  });
+  let products;
+  if (opts.cart && opts.cart.length) {
+    products = opts.cart;
+  } else {
+    const count = rand(1, 5);
+    const shuffled = [...productPool].sort(() => Math.random() - 0.5).slice(0, count);
+    products = shuffled.map(p => {
+      const qty = rand(1, 3);
+      return { product_id: p.product_id, name: p.name, category: p.category, quantity: qty, sum: p.price * qty };
+    });
+  }
 
   const sum = products.reduce((acc, p) => acc + p.sum, 0);
   const payCard = Math.random() > 0.45 ? sum : 0;
@@ -334,7 +344,7 @@ function buildEmulatedTransaction(account, label, productPool) {
   return {
     account,
     store_label: label,
-    transaction_id: 900000 + rand(1, 99999),
+    transaction_id: opts.transactionId || 900000 + rand(1, 99999),
     time: fmt(now),
     date_start: fmt(dateStart),
     duration_sec: durationSec,
@@ -351,6 +361,25 @@ function buildEmulatedTransaction(account, label, productPool) {
   };
 }
 
+// Turn [{product_id, quantity}] from /taps into full line items priced from the menu cache.
+function resolveCart(account, items) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const cache = productCaches[account] || {};
+  const fallback = Object.fromEntries(FAKE_PRODUCTS.map(p => [String(p.product_id), p]));
+  return items.map(it => {
+    const info = cache[String(it.product_id)] || fallback[String(it.product_id)];
+    const qty = Math.max(1, parseInt(it.quantity, 10) || 1);
+    const price = info?.price > 0 ? info.price : rand(40, 250);
+    return {
+      product_id: it.product_id,
+      name: info?.name || `Product #${it.product_id}`,
+      category: info?.category || null,
+      quantity: qty,
+      sum: price * qty,
+    };
+  });
+}
+
 app.post('/api/emulate', async (req, res) => {
   const account = req.body?.account || stores[0]?.account || 'emulator';
   const store = storeByAccount[account];
@@ -358,9 +387,10 @@ app.post('/api/emulate', async (req, res) => {
 
   // Generate a fake transaction ID (>900000 triggers emulated path in processTransaction)
   const fakeId = 900000 + rand(1, 99999);
+  const cart = resolveCart(account, req.body?.cart);
 
   // Go through the full webhook pipeline — same path as a real Poster webhook
-  await processTransaction(store, fakeId, 'emulate');
+  await processTransaction(store, fakeId, cart.length ? 'taps' : 'emulate', { cart });
 
   const tx = lastTransaction;
   res.json({ status: 'ok', transaction_id: tx?.transaction_id, sum: tx?.sum, products: tx?.products });
@@ -368,6 +398,14 @@ app.post('/api/emulate', async (req, res) => {
 
 app.get('/emulator', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'emulator.html'));
+});
+
+app.get('/taps', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'taps.html'));
+});
+
+app.get('/viz', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'viz.html'));
 });
 
 // ─── Connect API (for external tools: TouchDesigner, MadMapper, etc.) ────────

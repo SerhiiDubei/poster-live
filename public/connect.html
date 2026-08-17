@@ -182,8 +182,29 @@
 <header>
   <h1>POSTER LIVE &#8212; CONNECT</h1>
   <div class="tag">для розробників</div>
-  <a class="back" href="/">&#8592; Live Feed</a>
+  <span class="back" style="margin-left:auto;">
+    <a class="back" href="/" style="margin:0;">&#8592; Live Feed</a>
+    &nbsp;·&nbsp; <a class="back" href="/viz" style="margin:0;">Візуалізація</a>
+    &nbsp;·&nbsp; <a class="back" href="/taps" style="margin:0;">Крани</a>
+    &nbsp;·&nbsp; <a class="back" href="/emulator" style="margin:0;">Емулятор</a>
+  </span>
 </header>
+
+<!-- Як перевірити -->
+<h2>Як перевірити, що дані йдуть</h2>
+<div class="panel">
+  <div class="note" style="margin:0;">
+    Реальних продажів чекати не треба &#8212; є дві пісочниці, які шлють транзакції тим самим каналом:<br><br>
+    <strong style="color:#f0f0f0;">/taps</strong> &#8212; 12 кранів: клацаєш по пиву, збираєш чек, тиснеш «Відправити».
+    Найзручніше для перевірки візуалізації &#8212; ти контролюєш, що саме прилетить.<br>
+    <strong style="color:#f0f0f0;">/emulator</strong> &#8212; випадкові чеки, вручну або автоматично кожні 15&#8211;120 сек.
+    Зручно лишити ввімкненим фоном на час налаштування.<br><br>
+    <strong style="color:#f0f0f0;">/viz</strong> &#8212; готова веб-візуалізація живого потоку.
+    Відкрий її поруч і одразу побачиш, чи долітають дані (клавіша <code>F</code> &#8212; на весь екран).<br><br>
+    Емульовані чеки мають номер <code>&gt; 900000</code> і поле <code>_emulated: true</code> &#8212;
+    у своїй візуалізації їх можна відфільтрувати або підсвітити.
+  </div>
+</div>
 
 <!-- WebSocket URL -->
 <h2>WebSocket endpoint</h2>

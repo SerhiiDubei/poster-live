@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Poster Taps</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid #222;
+      padding-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 { font-size: 18px; font-weight: normal; letter-spacing: 0.1em; color: #fff; }
+
+    .tag {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: #2a1a00;
+      color: #d4a14a;
+    }
+
+    #menu-status { font-size: 12px; color: #555; }
+
+    .links { margin-left: auto; display: flex; gap: 16px; }
+    .links a { font-size: 12px; color: #444; text-decoration: none; }
+    .links a:hover { color: #888; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .panel-title {
+      font-size: 11px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-title .hint { color: #333; text-transform: none; letter-spacing: 0; }
+
+    /* ─── Крани ─────────────────────────────────────────────── */
+    #taps {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 12px;
+    }
+
+    .tap {
+      position: relative;
+      background: #141414;
+      border: 1px solid #232323;
+      border-radius: 8px;
+      padding: 14px 14px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, transform 0.08s;
+      min-height: 116px;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+    .tap:hover { border-color: #2f4a2f; background: #161a16; }
+    .tap:active { transform: scale(0.98); }
+    .tap.active { border-color: #4caf50; background: #141c14; }
+    .tap.pour { animation: pour 0.35s ease; }
+    @keyframes pour {
+      0%   { box-shadow: 0 0 0 0 rgba(76,175,80,0.5); }
+      100% { box-shadow: 0 0 0 14px rgba(76,175,80,0); }
+    }
+
+    .tap-num {
+      font-size: 10px;
+      color: #333;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+    .tap.active .tap-num { color: #3a5a3a; }
+
+    .tap-name {
+      font-size: 13px;
+      color: #ddd;
+      line-height: 1.35;
+      margin-bottom: 4px;
+      word-break: break-word;
+    }
+    .tap-cat {
+      font-size: 10px;
+      color: #555;
+      background: #1a1a1a;
+      padding: 1px 6px;
+      border-radius: 3px;
+      align-self: flex-start;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tap-price {
+      margin-top: auto;
+      padding-top: 8px;
+      font-size: 13px;
+      color: #888;
+    }
+
+    .tap-qty {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 11px;
+      background: #4caf50;
+      color: #0a0a0a;
+      font-size: 12px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .tap.active .tap-qty { display: flex; }
+
+    .tap-edit {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      font-size: 11px;
+      color: #2e2e2e;
+      padding: 4px 6px;
+      border-radius: 4px;
+      line-height: 1;
+    }
+    .tap-edit:hover { color: #d4a14a; background: #1e1a12; }
+
+    /* ─── Чек ───────────────────────────────────────────────── */
+    #receipt-panel { position: sticky; top: 24px; }
+
+    #receipt { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+
+    .line {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 0;
+      border-bottom: 1px solid #181818;
+    }
+    .line-name { font-size: 12px; color: #ccc; line-height: 1.3; word-break: break-word; }
+    .line-sum  { font-size: 12px; color: #888; white-space: nowrap; }
+
+    .stepper { display: flex; align-items: center; gap: 6px; }
+    .step-btn {
+      width: 20px; height: 20px;
+      border: 1px solid #2a2a2a;
+      background: #161616;
+      color: #777;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .step-btn:hover { background: #202020; color: #ccc; }
+    .step-qty { font-size: 12px; color: #fff; min-width: 16px; text-align: center; }
+
+    #empty-receipt { color: #2a2a2a; font-size: 12px; text-align: center; padding: 28px 0; }
+
+    .total {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 12px 0 16px;
+      border-top: 1px solid #222;
+    }
+    .total-label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.08em; }
+    .total-sum { font-size: 22px; color: #fff; }
+
+    button.primary {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: #1a2a1a;
+      color: #4caf50;
+      border: 1px solid #2a3a2a;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: background 0.15s;
+    }
+    button.primary:hover:not(:disabled) { background: #223222; }
+    button.primary:disabled { opacity: 0.35; cursor: default; }
+
+    .clear-link {
+      display: block;
+      text-align: center;
+      margin-top: 10px;
+      font-size: 11px;
+      color: #333;
+      cursor: pointer;
+    }
+    .clear-link:hover { color: #777; }
+
+    #send-status {
+      margin-top: 12px;
+      font-size: 12px;
+      text-align: center;
+      min-height: 16px;
+      color: #4caf50;
+    }
+
+    /* ─── Лог ───────────────────────────────────────────────── */
+    .log-item {
+      background: #141414;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .log-top {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .log-id { font-size: 11px; color: #666; }
+    .log-sum { font-size: 13px; color: #fff; text-align: right; }
+    .log-time { font-size: 11px; color: #333; }
+    .log-products { display: flex; flex-wrap: wrap; gap: 5px; }
+    .prod-chip {
+      font-size: 11px;
+      padding: 2px 9px;
+      border-radius: 3px;
+      background: #171717;
+      color: #777;
+      white-space: nowrap;
+    }
+    .prod-chip .qty { color: #444; margin-left: 4px; }
+    #empty-log { text-align: center; padding: 24px 0; color: #2a2a2a; font-size: 12px; }
+
+    /* ─── Модалка вибору пива ───────────────────────────────── */
+    #modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 60px 20px;
+      z-index: 10;
+    }
+    #modal.open { display: flex; }
+    .modal-box {
+      background: #111;
+      border: 1px solid #262626;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 75vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-head {
+      padding: 16px 18px;
+      border-bottom: 1px solid #1e1e1e;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .modal-head .panel-title { margin: 0; }
+    .modal-close { margin-left: auto; color: #444; cursor: pointer; font-size: 16px; }
+    .modal-close:hover { color: #aaa; }
+
+    #search {
+      width: 100%;
+      padding: 12px 18px;
+      background: #0d0d0d;
+      border: none;
+      border-bottom: 1px solid #1e1e1e;
+      color: #eee;
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+    }
+    #search::placeholder { color: #333; }
+
+    #results { overflow-y: auto; }
+    .result {
+      padding: 10px 18px;
+      border-bottom: 1px solid #161616;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .result:hover { background: #161a16; }
+    .result-name { font-size: 12px; color: #ccc; }
+    .result-cat { font-size: 10px; color: #555; }
+    .result-price { font-size: 12px; color: #777; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>POSTER TAPS</h1>
+  <div class="tag">пісочниця · крани</div>
+  <div id="menu-status">завантаження меню...</div>
+  <div class="links">
+    <a href="/">&#8592; Live Feed</a>
+    <a href="/emulator">Емулятор</a>
+    <a href="/connect">Connect</a>
+  </div>
+</header>
+
+<div class="layout">
+
+  <div>
+    <div class="panel" style="margin-bottom:20px;">
+      <div class="panel-title">
+        <span>Крани</span>
+        <span class="hint">клік — налити · &#9998; — замінити позицію</span>
+      </div>
+      <div id="taps"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">
+        <span>Відправлені чеки</span>
+        <span class="hint" id="log-clear" style="cursor:pointer;">очистити</span>
+      </div>
+      <div id="log"><div id="empty-log">Ще нічого не відправлено...</div></div>
+    </div>
+  </div>
+
+  <div class="panel" id="receipt-panel">
+    <div class="panel-title"><span>Поточний чек</span></div>
+    <div id="receipt"></div>
+    <div id="empty-receipt">Порожньо — натисни на кран</div>
+    <div class="total">
+      <span class="total-label">Разом</span>
+      <span class="total-sum"><span id="total">0</span> грн</span>
+    </div>
+    <button class="primary" id="btn-send" disabled>&#9658; Відправити</button>
+    <span class="clear-link" id="btn-clear">очистити чек</span>
+    <div id="send-status"></div>
+  </div>
+
+</div>
+
+<div id="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="panel-title">Кран <span id="modal-tap-num"></span> — обери позицію</span>
+      <span class="modal-close" id="modal-close">&#10005;</span>
+    </div>
+    <input id="search" type="text" placeholder="пошук по меню...">
+    <div id="results"></div>
+  </div>
+</div>
+
+<script>
+  const TAP_COUNT   = 12;
+  const STORAGE_KEY = 'poster_taps_v1';
+
+  const tapsEl      = document.getElementById('taps');
+  const receiptEl   = document.getElementById('receipt');
+  const emptyRecEl  = document.getElementById('empty-receipt');
+  const totalEl     = document.getElementById('total');
+  const btnSend     = document.getElementById('btn-send');
+  const btnClear    = document.getElementById('btn-clear');
+  const sendStatus  = document.getElementById('send-status');
+  const menuStatus  = document.getElementById('menu-status');
+  const logEl       = document.getElementById('log');
+  const emptyLog    = document.getElementById('empty-log');
+  const logClear    = document.getElementById('log-clear');
+
+  const modal       = document.getElementById('modal');
+  const modalClose  = document.getElementById('modal-close');
+  const modalTapNum = document.getElementById('modal-tap-num');
+  const searchInput = document.getElementById('search');
+  const resultsEl   = document.getElementById('results');
+
+  let allProducts = [];   // усе меню з /api/products
+  let taps        = [];   // 12 обраних продуктів
+  let cart        = new Map();  // product_id -> quantity
+  let editingTap  = null;
+
+  // ─── Меню ──────────────────────────────────────────────────────────────────
+  async function loadMenu() {
+    try {
+      const res  = await fetch('/api/products');
+      const data = await res.json();
+      if (data.error || !data.count) {
+        menuStatus.textContent = 'меню недоступне';
+        menuStatus.style.color = '#554433';
+        return;
+      }
+      allProducts = data.products.filter(p => p.name);
+      menuStatus.textContent = data.count + ' позицій (' + data.account + ')';
+      menuStatus.style.color = '#4caf50';
+      restoreTaps();
+      renderTaps();
+    } catch (_) {
+      menuStatus.textContent = 'сервер недоступний';
+      menuStatus.style.color = '#554433';
+    }
+  }
+
+  // Дефолт — перші 12 позицій з ненульовою ціною; вибір користувача живе в localStorage
+  function restoreTaps() {
+    const byId = new Map(allProducts.map(p => [String(p.product_id), p]));
+    let saved = [];
+    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (_) {}
+
+    taps = saved.map(id => byId.get(String(id))).filter(Boolean);
+
+    if (taps.length < TAP_COUNT) {
+      const chosen = new Set(taps.map(p => String(p.product_id)));
+      for (const p of allProducts) {
+        if (taps.length >= TAP_COUNT) break;
+        if (p.price > 0 && !chosen.has(String(p.product_id))) {
+          taps.push(p);
+          chosen.add(String(p.product_id));
+        }
+      }
+    }
+    taps = taps.slice(0, TAP_COUNT);
+    saveTaps();
+  }
+
+  function saveTaps() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(taps.map(p => p.product_id)));
+  }
+
+  // ─── Рендер кранів ─────────────────────────────────────────────────────────
+  function renderTaps() {
+    tapsEl.textContent = '';
+    taps.forEach((p, i) => {
+      const qty = cart.get(String(p.product_id)) || 0;
+
+      const el = document.createElement('div');
+      el.className = 'tap' + (qty > 0 ? ' active' : '');
+
+      const num = document.createElement('div');
+      num.className = 'tap-num';
+      num.textContent = 'КРАН ' + String(i + 1).padStart(2, '0');
+
+      const name = document.createElement('div');
+      name.className = 'tap-name';
+      name.textContent = p.name;
+
+      const price = document.createElement('div');
+      price.className = 'tap-price';
+      price.textContent = (p.price > 0 ? p.price : '—') + ' грн';
+
+      const badge = document.createElement('div');
+      badge.className = 'tap-qty';
+      badge.textContent = qty;
+
+      el.append(num, name);
+      if (p.category) {
+        const cat = document.createElement('div');
+        cat.className = 'tap-cat';
+        cat.textContent = p.category;
+        el.appendChild(cat);
+      }
+      el.append(price, badge);
+
+      const edit = document.createElement('span');
+      edit.className = 'tap-edit';
+      edit.textContent = '✎';
+      edit.title = 'Замінити позицію на цьому крані';
+      edit.addEventListener('click', e => { e.stopPropagation(); openModal(i); });
+      el.appendChild(edit);
+
+      el.addEventListener('click', () => {
+        addToCart(p);
+        el.classList.remove('pour');
+        void el.offsetWidth;      // рестарт CSS-анімації
+        el.classList.add('pour');
+      });
+
+      tapsEl.appendChild(el);
+    });
+  }
+
+  // ─── Чек ───────────────────────────────────────────────────────────────────
+  function addToCart(p) {
+    const id = String(p.product_id);
+    cart.set(id, (cart.get(id) || 0) + 1);
+    renderAll();
+  }
+
+  function setQty(id, qty) {
+    if (qty <= 0) cart.delete(id);
+    else cart.set(id, qty);
+    renderAll();
+  }
+
+  function priceOf(id) {
+    const p = taps.find(t => String(t.product_id) === String(id))
+           || allProducts.find(t => String(t.product_id) === String(id));
+    return p && p.price > 0 ? p.price : 0;
+  }
+
+  function nameOf(id) {
+    const p = taps.find(t => String(t.product_id) === String(id))
+           || allProducts.find(t => String(t.product_id) === String(id));
+    return p ? p.name : '#' + id;
+  }
+
+  function renderReceipt() {
+    receiptEl.textContent = '';
+    let total = 0;
+
+    cart.forEach((qty, id) => {
+      const sum = priceOf(id) * qty;
+      total += sum;
+
+      const line = document.createElement('div');
+      line.className = 'line';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'line-name';
+      nameEl.textContent = nameOf(id);
+
+      const stepper = document.createElement('div');
+      stepper.className = 'stepper';
+      const minus = document.createElement('button');
+      minus.className = 'step-btn';
+      minus.textContent = '−';
+      minus.addEventListener('click', () => setQty(id, qty - 1));
+      const qtyEl = document.createElement('span');
+      qtyEl.className = 'step-qty';
+      qtyEl.textContent = qty;
+      const plus = document.createElement('button');
+      plus.className = 'step-btn';
+      plus.textContent = '+';
+      plus.addEventListener('click', () => setQty(id, qty + 1));
+      stepper.append(minus, qtyEl, plus);
+
+      const sumEl = document.createElement('div');
+      sumEl.className = 'line-sum';
+      sumEl.textContent = (sum > 0 ? sum : '~') + ' грн';
+
+      line.append(nameEl, stepper, sumEl);
+      receiptEl.appendChild(line);
+    });
+
+    emptyRecEl.style.display = cart.size ? 'none' : '';
+    totalEl.textContent = total;
+    btnSend.disabled = cart.size === 0;
+  }
+
+  function renderAll() {
+    renderTaps();
+    renderReceipt();
+  }
+
+  // ─── Відправка ─────────────────────────────────────────────────────────────
+  async function send() {
+    btnSend.disabled = true;
+    sendStatus.style.color = '#555';
+    sendStatus.textContent = 'відправляю...';
+
+    const items = [...cart.entries()].map(([product_id, quantity]) => ({ product_id, quantity }));
+
+    try {
+      const res = await fetch('/api/emulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart: items }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        addLogItem(data);
+        cart.clear();
+        renderAll();
+        sendStatus.style.color = '#4caf50';
+        sendStatus.textContent = '✓ чек #' + data.transaction_id + ' відправлено';
+      } else {
+        sendStatus.style.color = '#cf6679';
+        sendStatus.textContent = 'помилка: ' + (data.error || 'невідома');
+      }
+    } catch (e) {
+      sendStatus.style.color = '#cf6679';
+      sendStatus.textContent = 'сервер недоступний';
+    } finally {
+      btnSend.disabled = cart.size === 0;
+      setTimeout(() => { sendStatus.textContent = ''; }, 4000);
+    }
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function addLogItem(data) {
+    emptyLog.style.display = 'none';
+
+    const item = document.createElement('div');
+    item.className = 'log-item';
+
+    const top = document.createElement('div');
+    top.className = 'log-top';
+
+    const idEl = document.createElement('span');
+    idEl.className = 'log-id';
+    idEl.textContent = '#' + data.transaction_id;
+
+    const timeEl = document.createElement('span');
+    timeEl.className = 'log-time';
+    const d = new Date();
+    timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+
+    const sumEl = document.createElement('span');
+    sumEl.className = 'log-sum';
+    sumEl.textContent = data.sum + ' грн';
+
+    top.append(idEl, timeEl, sumEl);
+    item.appendChild(top);
+
+    const products = data.products || [];
+    if (products.length) {
+      const prods = document.createElement('div');
+      prods.className = 'log-products';
+      products.forEach(p => {
+        const chip = document.createElement('span');
+        chip.className = 'prod-chip';
+        chip.appendChild(document.createTextNode(p.name));
+        if (p.quantity > 1) {
+          const q = document.createElement('span');
+          q.className = 'qty';
+          q.textContent = '×' + p.quantity;
+          chip.appendChild(q);
+        }
+        prods.appendChild(chip);
+      });
+      item.appendChild(prods);
+    }
+
+    logEl.insertBefore(item, logEl.firstChild);
+  }
+
+  // ─── Модалка заміни позиції на крані ───────────────────────────────────────
+  function openModal(tapIndex) {
+    editingTap = tapIndex;
+    modalTapNum.textContent = String(tapIndex + 1).padStart(2, '0');
+    searchInput.value = '';
+    renderResults('');
+    modal.classList.add('open');
+    searchInput.focus();
+  }
+
+  function closeModal() {
+    modal.classList.remove('open');
+    editingTap = null;
+  }
+
+  function renderResults(query) {
+    const q = query.trim().toLowerCase();
+    const list = (q
+      ? allProducts.filter(p =>
+          p.name.toLowerCase().includes(q) ||
+          (p.category || '').toLowerCase().includes(q))
+      : allProducts
+    ).slice(0, 60);
+
+    resultsEl.textContent = '';
+    list.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'result';
+
+      const left = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'result-name';
+      name.textContent = p.name;
+      left.appendChild(name);
+      if (p.category) {
+        const cat = document.createElement('div');
+        cat.className = 'result-cat';
+        cat.textContent = p.category;
+        left.appendChild(cat);
+      }
+
+      const price = document.createElement('div');
+      price.className = 'result-price';
+      price.textContent = (p.price > 0 ? p.price : '—') + ' грн';
+
+      row.append(left, price);
+      row.addEventListener('click', () => {
+        taps[editingTap] = p;
+        saveTaps();
+        closeModal();
+        renderAll();
+      });
+      resultsEl.appendChild(row);
+    });
+  }
+
+  searchInput.addEventListener('input', () => renderResults(searchInput.value));
+  modalClose.addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+  btnSend.addEventListener('click', send);
+  btnClear.addEventListener('click', () => { cart.clear(); renderAll(); });
+  logClear.addEventListener('click', () => {
+    logEl.querySelectorAll('.log-item').forEach(el => el.remove());
+    emptyLog.style.display = '';
+  });
+
+  loadMenu();
+</script>
+</body>
+</html>
