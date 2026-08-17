@@ -423,6 +423,10 @@ app.get('/maze', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'maze.html'));
 });
 
+app.get('/stage', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'stage.html'));
+});
+
 // ─── Connect API (for external tools: TouchDesigner, MadMapper, etc.) ────────
 app.get('/api/products', (req, res) => {
   const account = req.query.account || stores[0]?.account;

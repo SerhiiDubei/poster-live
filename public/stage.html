@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poster Stage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #080f09; }
+  body { font-family: 'Press Start 2P', monospace; color: #e6f0e2; cursor: none; }
+  body.show-cursor { cursor: default; }
+
+  /* Гра — фон на весь екран, усе інше поверх неї */
+  #game {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    image-rendering: pixelated;
+    display: block;
+    z-index: 0;
+  }
+
+  /* ─── Верхній рядок: мінімум ────────────────────────────── */
+  .top {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 3;
+    display: flex; align-items: center; gap: 22px;
+    padding: 14px 20px;
+    font-size: 7px; color: #4e6b46;
+    background: linear-gradient(#080f09cc, #080f0900);
+    pointer-events: none;
+  }
+  .top b { color: #93b57c; font-weight: normal; }
+  .dot { width: 6px; height: 6px; background: #34482f; margin-left: auto; }
+  .dot.on { background: #6e8f5a; box-shadow: 0 0 8px #6e8f5a; }
+
+  /* ─── Мінікарта ─────────────────────────────────────────── */
+  .map-wrap {
+    position: fixed; left: 20px; bottom: 20px; z-index: 3;
+    border: 2px solid #2c4230; background: #070d08;
+    box-shadow: 0 3px 0 #04080500;
+    padding: 4px;
+    opacity: 0.92;
+  }
+  #minimap { display: block; image-rendering: pixelated; }
+  .map-label {
+    font-size: 6px; color: #3e5738; letter-spacing: 0.12em;
+    padding: 5px 2px 1px;
+  }
+
+  /* ─── Плашка «яке пиво → куди веде» ─────────────────────── */
+  .call {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(14px);
+    z-index: 4;
+    display: flex; align-items: center; gap: 20px;
+    padding: 16px 26px;
+    background: #101a12ee; border: 3px solid #6e8f5a;
+    box-shadow: 0 5px 0 #04080a;
+    max-width: min(76vw, 760px);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+  }
+  .call.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .call.slid { border-color: #ffcf4a; }
+
+  .call-arrow { font-size: 34px; line-height: 1; color: #ffcf4a; flex: none; }
+  .call-beer {
+    font-size: 15px; line-height: 1.45; color: #fff;
+    overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .call-dir { font-size: 8px; color: #93b57c; margin-top: 11px; letter-spacing: 0.08em; }
+  .call-qty { font-size: 9px; color: #ffcf4a; flex: none; }
+
+  /* ─── Бонус фрукта ──────────────────────────────────────── */
+  .fruit {
+    position: fixed; left: 50%; top: 54px; transform: translateX(-50%);
+    z-index: 4; display: flex; align-items: center; gap: 12px;
+    padding: 11px 18px; background: #101a12ee; border: 3px solid #ffcf4a;
+    opacity: 0; transition: opacity 0.25s ease; pointer-events: none;
+  }
+  .fruit.on { opacity: 1; }
+  .fruit-swatch { width: 14px; height: 14px; flex: none; }
+  .fruit-name { font-size: 9px; color: #ffcf4a; }
+  .fruit-desc { font-size: 7px; color: #93b57c; margin-top: 7px; }
+
+  /* ─── Перемога ──────────────────────────────────────────── */
+  .win {
+    position: fixed; inset: 0; z-index: 5;
+    background: #080f09e0;
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+  }
+  .win.on { display: flex; }
+  .win-t { font-size: 26px; color: #ffcf4a; text-shadow: 3px 3px 0 #48613a; }
+  .win-s { font-size: 10px; color: #93b57c; line-height: 2; text-align: center; }
+
+  .hint {
+    position: fixed; right: 18px; bottom: 16px; z-index: 3;
+    font-size: 6px; color: #1e2b1d; letter-spacing: 0.1em;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div class="top">
+  <span>КРОКИ <b id="t-steps">0</b></span>
+  <span>ФРУКТИ <b id="t-fruits">0/0</b></span>
+  <span>ВІДКРИТО <b id="t-reveal">0%</b></span>
+  <span class="dot" id="dot"></span>
+</div>
+
+<div class="map-wrap">
+  <canvas id="minimap"></canvas>
+  <div class="map-label">КАРТА</div>
+</div>
+
+<div class="call" id="call">
+  <div class="call-arrow" id="call-arrow">↗</div>
+  <div>
+    <div class="call-beer" id="call-beer"></div>
+    <div class="call-dir" id="call-dir"></div>
+  </div>
+  <div class="call-qty" id="call-qty"></div>
+</div>
+
+<div class="fruit" id="fruit">
+  <div class="fruit-swatch" id="fruit-swatch"></div>
+  <div>
+    <div class="fruit-name" id="fruit-name"></div>
+    <div class="fruit-desc" id="fruit-desc"></div>
+  </div>
+</div>
+
+<div class="win" id="win">
+  <div class="win-t">ВИХІД ЗНАЙДЕНО</div>
+  <div class="win-s" id="win-s"></div>
+</div>
+
+<div class="hint">F — ПОВНИЙ ЕКРАН · R — НОВЕ ПОЛЕ</div>
+
+<script src="/maze-core.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+
+const VIEW_H   = 108;    // логічна висота кадру: що менша, то сильніший зум
+const STEP_MS  = 750;    // пауза між кроками з черги
+const TAPS_KEY = 'poster_taps_v1';     // спільний список кранів з /taps
+const MAP_KEY  = 'poster_maze_map_v1'; // мапінг, налаштований на /maze
+
+const maze = new Maze();
+const cv   = $('game');
+const ctx  = cv.getContext('2d');
+const mini = $('minimap');
+const mctx = mini.getContext('2d');
+
+// ─── Камера ────────────────────────────────────────────────────────────────
+// Тримається за героєм із плавним доганянням, координати округлюються —
+// інакше піксельна сітка «пливе» під час руху.
+let camX = 0, camY = 0, camReady = false;
+
+function fitCanvas() {
+  const aspect = window.innerWidth / window.innerHeight;
+  cv.height = VIEW_H;
+  cv.width  = Math.max(150, Math.min(340, Math.round(VIEW_H * aspect)));
+}
+
+function updateCamera() {
+  const [tx, ty] = maze.playerCenter();
+  const gx = tx - cv.width / 2;
+  const gy = ty - cv.height / 2;
+  if (!camReady) { camX = gx; camY = gy; camReady = true; return; }
+  camX += (gx - camX) * 0.12;
+  camY += (gy - camY) * 0.12;
+}
+
+const MINI_CELL = 5;
+function fitMinimap() {
+  const { W, H } = maze.dims();
+  mini.width  = W * MINI_CELL;
+  mini.height = H * MINI_CELL;
+  mini.style.width  = (W * MINI_CELL * 1.7) + 'px';
+  mini.style.height = (H * MINI_CELL * 1.7) + 'px';
+}
+
+function frame(t) {
+  updateCamera();
+  maze.render(ctx, t, { w: cv.width, h: cv.height, ox: camX, oy: camY });
+  maze.drawMinimap(mctx, MINI_CELL, t);
+  requestAnimationFrame(frame);
+}
+
+// ─── HUD ───────────────────────────────────────────────────────────────────
+function updateHud() {
+  $('t-steps').textContent  = maze.steps;
+  $('t-fruits').textContent = maze.fruitsGot() + '/' + maze.fruitTotal;
+  $('t-reveal').textContent = maze.revealPct() + '%';
+  $('win').classList.toggle('on', maze.won);
+  if (maze.won) $('win-s').textContent = 'КРОКІВ: ' + maze.steps + '\nФРУКТІВ: ' + maze.fruitsGot() + '/' + maze.fruitTotal;
+}
+
+let callTimer;
+function showCall(beerName, arrow, dirText, slid, qtyText) {
+  $('call-arrow').textContent = arrow;
+  $('call-beer').textContent  = beerName;
+  $('call-dir').textContent   = dirText;
+  $('call-qty').textContent   = qtyText || '';
+  $('call').classList.toggle('slid', slid);
+  $('call').classList.add('on');
+  clearTimeout(callTimer);
+  callTimer = setTimeout(() => $('call').classList.remove('on'), STEP_MS + 2200);
+}
+
+let fruitTimer;
+function showFruit(fruit) {
+  $('fruit-swatch').style.background = fruit.color;
+  $('fruit-name').textContent = fruit.name;
+  $('fruit-desc').textContent = fruit.desc;
+  $('fruit').classList.add('on');
+  clearTimeout(fruitTimer);
+  fruitTimer = setTimeout(() => $('fruit').classList.remove('on'), 4200);
+}
+
+// ─── Крани і мапінг ────────────────────────────────────────────────────────
+let taps = [];
+let mapping = {};
+
+function defaultActionFor(i) { return MAZE_ACTIONS[Math.min(3, Math.floor(i / 3))].key; }
+
+function actionForProduct(productId) {
+  const key = mapping[String(productId)];
+  if (key) return mazeActionByKey(key);
+  const i = taps.findIndex(t => String(t.product_id) === String(productId));
+  return i >= 0 ? mazeActionByKey(defaultActionFor(i)) : null;
+}
+
+async function loadTaps() {
+  try { mapping = JSON.parse(localStorage.getItem(MAP_KEY) || '{}'); } catch (_) { mapping = {}; }
+
+  let all = [];
+  try {
+    const data = await (await fetch('/api/products')).json();
+    all = (data.products || []).filter(p => p.name);
+  } catch (_) { return; }
+
+  const byId = new Map(all.map(p => [String(p.product_id), p]));
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(TAPS_KEY) || '[]'); } catch (_) {}
+  taps = saved.map(id => byId.get(String(id))).filter(Boolean);
+
+  if (taps.length < 12) {
+    const chosen = new Set(taps.map(p => String(p.product_id)));
+    for (const p of all) {
+      if (taps.length >= 12) break;
+      if (p.price > 0 && !chosen.has(String(p.product_id))) { taps.push(p); chosen.add(String(p.product_id)); }
+    }
+  }
+  taps = taps.slice(0, 12);
+}
+
+// ─── Черга ходів ───────────────────────────────────────────────────────────
+const queue = [];
+let playing = false;
+
+function enqueue(beerName, action, label) {
+  queue.push({ beerName, action, label });
+  if (!playing) playNext();
+}
+
+function playNext() {
+  const item = queue.shift();
+  if (!item) { playing = false; return; }
+  playing = true;
+
+  const resolved = maze.resolveDirection(item.action.d[0], item.action.d[1]);
+  if (!resolved) {
+    showCall(item.beerName, item.action.arrow, 'ГЛУХИЙ КУТ', false, item.label);
+  } else {
+    const { fruit } = maze.move(resolved.d[0], resolved.d[1]);
+    if (fruit) showFruit(fruit);
+    if (resolved.slid) {
+      showCall(item.beerName, mazeArrowForVec(resolved.d), 'ОБХІД СТІНИ ' + item.action.arrow + '→' + mazeArrowForVec(resolved.d), true, item.label);
+    } else {
+      showCall(item.beerName, item.action.arrow, item.action.name, false, item.label);
+    }
+  }
+
+  updateHud();
+  setTimeout(playNext, STEP_MS);
+}
+
+// ─── Транзакції ────────────────────────────────────────────────────────────
+function onTransaction(tx) {
+  (tx.products || []).forEach(p => {
+    const action = actionForProduct(p.product_id);
+    if (!action) return;
+    const qty = Math.max(1, Math.round(Number(p.quantity) || 1));
+    for (let i = 0; i < qty; i++) {
+      enqueue(p.name, action, qty > 1 ? (i + 1) + '/' + qty : '');
+    }
+  });
+}
+
+// ─── WebSocket ─────────────────────────────────────────────────────────────
+let reconnectTimer;
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(proto + '//' + location.host);
+  ws.onopen    = () => { $('dot').classList.add('on'); clearTimeout(reconnectTimer); };
+  ws.onmessage = e => { try { onTransaction(JSON.parse(e.data)); } catch (_) {} };
+  ws.onclose   = () => { $('dot').classList.remove('on'); reconnectTimer = setTimeout(connect, 2000); };
+  ws.onerror   = () => ws.close();
+}
+
+// ─── Керування (тільки для оператора) ──────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'f' || e.key === 'F') {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  }
+  if (e.key === 'r' || e.key === 'R') {
+    queue.length = 0;
+    maze.restart();
+    camReady = false;
+    updateHud();
+  }
+});
+
+let cursorTimer;
+document.addEventListener('mousemove', () => {
+  document.body.classList.add('show-cursor');
+  clearTimeout(cursorTimer);
+  cursorTimer = setTimeout(() => document.body.classList.remove('show-cursor'), 2200);
+});
+
+window.addEventListener('resize', fitCanvas);
+
+fitCanvas();
+fitMinimap();
+loadTaps();
+connect();
+updateHud();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
