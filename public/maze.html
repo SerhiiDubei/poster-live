@@ -239,10 +239,11 @@ function updateHud() {
   $('s-fruits').textContent = (maze.fruitTotal - maze.fruits.size) + '/' + maze.fruitTotal;
   $('s-vision').textContent = maze.vision();
   $('s-buys').textContent   = buysCount;
-  $('s-status').textContent = maze.won ? 'ГОТОВО!' : 'ЗНАЙДИ ВИХІД';
-  $('s-status').style.color = maze.won ? '#ffcf4a' : '#e6f0e2';
+  const k = maze.doorKey;
+  $('s-status').textContent = 'К' + (maze.roomIndex + 1) + ' ' + maze.biome().name +
+    (k ? (maze.doorOpen ? ' · ВІДЧИНЕНО' : ' · КЛЮЧ: ' + k.name) : '');
+  $('s-status').style.color = maze.doorOpen ? '#ffcf4a' : '#e6f0e2';
   $('win').classList.toggle('on', maze.won);
-  if (maze.won) $('win-sub').textContent = 'кроків: ' + maze.steps + ' · фруктів: ' + (maze.fruitTotal - maze.fruits.size) + '/' + maze.fruitTotal;
 }
 
 let popupTimer;
@@ -360,17 +361,32 @@ function renderTaps() {
 const queue = [];
 let playing = false;
 
-function enqueue(productName, action) {
-  queue.push({ productName, action });
+function enqueue(productName, action, productId) {
+  queue.push({ productName, action, productId });
   if (!playing) playNext();
 }
 
 const arrowForVec = mazeArrowForVec;
 
+// Ключ від дверей: одне з дванадцяти пив на кімнату. Ядро гри про Poster
+// не знає — воно лише зберігає {id, name}.
+function pickDoorKey() {
+  if (!taps.length) return;
+  const p = taps[Math.floor(Math.random() * taps.length)];
+  maze.setDoorKey({ id: p.product_id, name: p.name });
+  updateHud();
+}
+
 function playNext() {
   const item = queue.shift();
   if (!item) { playing = false; return; }
   playing = true;
+
+  if (maze.isDoorKey(item.productId) && !maze.doorOpen) {
+    maze.openDoor();
+    maze.doorFound = true;
+    showFruit({ color: '#ffcf4a', name: 'КЛЮЧ: ' + item.productName, desc: 'ДВЕРІ ВІДЧИНЕНО' });
+  }
 
   const resolved = maze.resolveDirection(item.action.d[0], item.action.d[1]);
   let note, shown = item.action;
@@ -378,8 +394,17 @@ function playNext() {
   if (!resolved) {
     note = 'ГЛУХИЙ КУТ';
   } else {
-    const { fruit } = maze.move(resolved.d[0], resolved.d[1]);
+    const { fruit, result } = maze.move(resolved.d[0], resolved.d[1]);
     if (fruit) showFruit(fruit);
+    if (result === 'door-open') {
+      maze.nextRoom();
+      pickDoorKey();
+      renderTaps();
+      updateHud();
+      setTimeout(playNext, 1200);
+      return;
+    }
+    if (result === 'door-locked') note = 'ДВЕРІ ЗАМКНЕНІ';
     if (resolved.slid) {
       note = 'ОБХІД СТІНИ: ' + item.action.arrow + ' → ' + arrowForVec(resolved.d);
       shown = { arrow: arrowForVec(resolved.d), name: note };
@@ -442,13 +467,13 @@ function onTransaction(tx) {
     if (!action) { skipped++; return; }
     // Кожна одиниця товару — окремий крок: дві пляшки = два кроки
     const qty = Math.max(1, Math.round(Number(p.quantity) || 1));
-    for (let i = 0; i < qty; i++) moves.push({ productName: p.name, action });
+    for (let i = 0; i < qty; i++) moves.push({ productName: p.name, action, productId: p.product_id });
   });
 
   if (!moves.length && !skipped) return;
   buysCount += moves.length;
   addFeed(tx, moves, skipped);
-  moves.forEach(m => enqueue(m.productName, m.action));
+  moves.forEach(m => enqueue(m.productName, m.action, m.productId));
   updateHud();
 }
 
@@ -481,7 +506,7 @@ $('btn-test').addEventListener('click', () => {
   if (!taps.length) return;
   const i = Math.floor(Math.random() * taps.length);
   const p = taps[i];
-  enqueue(p.name, actionForProduct(p.product_id));
+  enqueue(p.name, actionForProduct(p.product_id), p.product_id);
   buysCount++;
   updateHud();
 });

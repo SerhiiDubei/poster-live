@@ -49,6 +49,29 @@
     padding: 5px 2px 1px;
   }
 
+  /* ─── Легенда: яке пиво веде куди ───────────────────────── */
+  .legend {
+    position: fixed; right: 18px; top: 50%; transform: translateY(-50%);
+    z-index: 3; display: flex; flex-direction: column; gap: 12px;
+    max-width: 270px; pointer-events: none;
+  }
+  .lg-group {
+    display: grid; grid-template-columns: 26px 1fr; gap: 10px;
+    align-items: start;
+    background: #0c130ddd; border-left: 3px solid;
+    padding: 9px 11px 9px 9px;
+  }
+  .lg-arrow { font-size: 19px; line-height: 1; text-align: center; }
+  .lg-beers { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .lg-beer {
+    font-size: 7px; line-height: 1.5; color: #b9cdb0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lg-beer.hit { color: #fff; }
+
+  /* Група підсвічується, коли з неї щойно купили */
+  .lg-group.flash { background: #16211466; }
+
   /* ─── Плашка «яке пиво → куди веде» ─────────────────────── */
   .call {
     position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(14px);
@@ -74,8 +97,34 @@
   .call-qty { font-size: 9px; color: #ffcf4a; flex: none; }
 
   /* ─── Бонус фрукта ──────────────────────────────────────── */
+  /* ─── Банер дверей: яке пиво їх відмикає ────────────────── */
+  .door {
+    position: fixed; left: 50%; top: 44px; transform: translateX(-50%);
+    z-index: 4; display: none; align-items: center; gap: 16px;
+    padding: 12px 22px; background: #0e1114ee;
+    border: 3px solid #6b7078; box-shadow: 0 4px 0 #04080a;
+    max-width: min(70vw, 640px);
+  }
+  .door.on { display: flex; }
+  .door.open { border-color: #ffcf4a; background: #16140aee; }
+  .door-icon { font-size: 20px; line-height: 1; flex: none; }
+  .door-state { font-size: 7px; color: #8d9199; letter-spacing: 0.1em; }
+  .door.open .door-state { color: #ffcf4a; }
+  .door-beer { font-size: 12px; color: #fff; margin-top: 9px; }
+
+  /* Заставка нової кімнати */
+  .splash {
+    position: fixed; inset: 0; z-index: 6;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    background: #04080ae8;
+    opacity: 0; pointer-events: none; transition: opacity 0.35s ease;
+  }
+  .splash.on { opacity: 1; }
+  .splash-n { font-size: 10px; color: #6e8f5a; letter-spacing: 0.24em; }
+  .splash-t { font-size: 30px; text-shadow: 3px 3px 0 #04080a; }
+
   .fruit {
-    position: fixed; left: 50%; top: 54px; transform: translateX(-50%);
+    position: fixed; left: 50%; top: 132px; transform: translateX(-50%);
     z-index: 4; display: flex; align-items: center; gap: 12px;
     padding: 11px 18px; background: #101a12ee; border: 3px solid #ffcf4a;
     opacity: 0; transition: opacity 0.25s ease; pointer-events: none;
@@ -106,16 +155,32 @@
 <canvas id="game"></canvas>
 
 <div class="top">
+  <span>КІМНАТА <b id="t-room">1 · ЛІС</b></span>
   <span>КРОКИ <b id="t-steps">0</b></span>
   <span>ФРУКТИ <b id="t-fruits">0/0</b></span>
   <span>ВІДКРИТО <b id="t-reveal">0%</b></span>
   <span class="dot" id="dot"></span>
 </div>
 
+<div class="door" id="door">
+  <div class="door-icon" id="door-icon">🔒</div>
+  <div>
+    <div class="door-state" id="door-state"></div>
+    <div class="door-beer" id="door-beer"></div>
+  </div>
+</div>
+
+<div class="splash" id="splash">
+  <div class="splash-n" id="splash-n"></div>
+  <div class="splash-t" id="splash-t"></div>
+</div>
+
 <div class="map-wrap">
   <canvas id="minimap"></canvas>
   <div class="map-label">КАРТА</div>
 </div>
+
+<div class="legend" id="legend"></div>
 
 <div class="call" id="call">
   <div class="call-arrow" id="call-arrow">↗</div>
@@ -202,8 +267,10 @@ function updateHud() {
 }
 
 let callTimer;
-function showCall(beerName, arrow, dirText, slid, qtyText) {
+function showCall(beerName, arrow, dirText, slid, qtyText, color) {
   $('call-arrow').textContent = arrow;
+  $('call-arrow').style.color = color || '#ffcf4a';
+  $('call').style.borderColor = color || '#6e8f5a';
   $('call-beer').textContent  = beerName;
   $('call-dir').textContent   = dirText;
   $('call-qty').textContent   = qtyText || '';
@@ -258,14 +325,105 @@ async function loadTaps() {
     }
   }
   taps = taps.slice(0, 12);
+  pickDoorKey();
+  renderLegend();
+}
+
+// ─── Ключ від дверей ───────────────────────────────────────────────────────
+// Одне з дванадцяти пив стає ключем поточної кімнати. Ядро гри не знає про
+// Poster — воно лише зберігає {id, name}, а вибір робить сторінка.
+function pickDoorKey() {
+  if (!taps.length) return;
+  const p = taps[Math.floor(Math.random() * taps.length)];
+  maze.setDoorKey({ id: p.product_id, name: p.name });
+  renderDoorBanner();
+}
+
+function renderDoorBanner() {
+  const k = maze.doorKey;
+  const el = $('door');
+  if (!k) { el.classList.remove('on'); return; }
+  $('door-beer').textContent = k.name;
+  $('door-state').textContent = maze.doorOpen ? 'ДВЕРІ ВІДЧИНЕНО — ЙДИ ДО НИХ' : 'ЩОБ ВІДЧИНИТИ ДВЕРІ — ЗАМОВ';
+  el.classList.toggle('open', maze.doorOpen);
+  el.classList.add('on');
+}
+
+function renderRoomLabel() {
+  $('t-room').textContent = (maze.roomIndex + 1) + ' · ' + maze.biome().name;
+}
+
+// ─── Легенда: групуємо крани за напрямком, колір збігається зі стрілкою ─────
+const groupEls = {};   // actionKey -> { box, beers: Map(product_id -> el) }
+
+function renderLegend() {
+  const box = $('legend');
+  box.textContent = '';
+  Object.keys(groupEls).forEach(k => delete groupEls[k]);
+
+  const byAction = new Map();
+  taps.forEach(p => {
+    const a = actionForProduct(p.product_id);
+    if (!a) return;
+    if (!byAction.has(a.key)) byAction.set(a.key, { action: a, items: [] });
+    byAction.get(a.key).items.push(p);
+  });
+
+  // Порядок як у MAZE_ACTIONS, щоб групи не стрибали між перезавантаженнями
+  MAZE_ACTIONS.forEach(a => {
+    const g = byAction.get(a.key);
+    if (!g) return;
+    const color = mazeColorForKey(a.key);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'lg-group';
+    wrap.style.borderLeftColor = color;
+
+    const arrow = document.createElement('div');
+    arrow.className = 'lg-arrow';
+    arrow.style.color = color;
+    arrow.textContent = a.arrow;
+
+    const beers = document.createElement('div');
+    beers.className = 'lg-beers';
+
+    const map = new Map();
+    g.items.forEach(p => {
+      const el = document.createElement('div');
+      el.className = 'lg-beer';
+      el.textContent = p.name;
+      el.title = p.name;
+      beers.appendChild(el);
+      map.set(String(p.product_id), el);
+    });
+
+    wrap.append(arrow, beers);
+    box.appendChild(wrap);
+    groupEls[a.key] = { box: wrap, beers: map };
+  });
+}
+
+// Підсвітити куплену позицію в легенді
+const flashTimers = {};
+function flashLegend(productId, actionKey) {
+  const g = groupEls[actionKey];
+  if (!g) return;
+  const el = g.beers.get(String(productId));
+  g.box.classList.add('flash');
+  if (el) el.classList.add('hit');
+  clearTimeout(flashTimers[actionKey]);
+  flashTimers[actionKey] = setTimeout(() => {
+    g.box.classList.remove('flash');
+    if (el) el.classList.remove('hit');
+  }, STEP_MS + 1500);
 }
 
 // ─── Черга ходів ───────────────────────────────────────────────────────────
 const queue = [];
 let playing = false;
 
-function enqueue(beerName, action, label) {
-  queue.push({ beerName, action, label });
+function enqueue(beerName, action, label, productId) {
+  queue.push({ beerName, action, label, productId });
   if (!playing) playNext();
 }
 
@@ -274,21 +432,63 @@ function playNext() {
   if (!item) { playing = false; return; }
   playing = true;
 
+  const ownColor = mazeColorForKey(item.action.key);
+  flashLegend(item.productId, item.action.key);
+
+  // Куплено ключ-пиво — двері відмикаються, навіть якщо герой далеко від них
+  if (maze.isDoorKey(item.productId) && !maze.doorOpen) {
+    maze.openDoor();
+    maze.doorFound = true;          // і одразу показуємо, де вони
+    renderDoorBanner();
+    showKeyUnlocked(item.beerName);
+  }
+
   const resolved = maze.resolveDirection(item.action.d[0], item.action.d[1]);
   if (!resolved) {
-    showCall(item.beerName, item.action.arrow, 'ГЛУХИЙ КУТ', false, item.label);
+    showCall(item.beerName, item.action.arrow, 'ГЛУХИЙ КУТ', false, item.label, ownColor);
   } else {
-    const { fruit } = maze.move(resolved.d[0], resolved.d[1]);
+    const { fruit, result } = maze.move(resolved.d[0], resolved.d[1]);
     if (fruit) showFruit(fruit);
+    if (result === 'door-locked') showCall(item.beerName, '🔒', 'ДВЕРІ ЗАМКНЕНІ', false, item.label, '#9aa0a8');
+    if (result === 'door-open') { enterNextRoom(); return; }
     if (resolved.slid) {
-      showCall(item.beerName, mazeArrowForVec(resolved.d), 'ОБХІД СТІНИ ' + item.action.arrow + '→' + mazeArrowForVec(resolved.d), true, item.label);
+      // Стрілка й рамка беруть колір фактичного напрямку — того, куди герой пішов
+      showCall(item.beerName, mazeArrowForVec(resolved.d),
+        'ОБХІД СТІНИ ' + item.action.arrow + '→' + mazeArrowForVec(resolved.d),
+        true, item.label, mazeColorForVec(resolved.d));
     } else {
-      showCall(item.beerName, item.action.arrow, item.action.name, false, item.label);
+      showCall(item.beerName, item.action.arrow, item.action.name, false, item.label, ownColor);
     }
   }
 
   updateHud();
   setTimeout(playNext, STEP_MS);
+}
+
+// ─── Ключ і перехід у наступну кімнату ─────────────────────────────────────
+function showKeyUnlocked(beerName) {
+  $('door-icon').textContent = '🔑';
+  showFruit({ color: '#ffcf4a', name: 'КЛЮЧ: ' + beerName, desc: 'ДВЕРІ ВІДЧИНЕНО' });
+}
+
+function showRoomSplash() {
+  $('splash-n').textContent = 'КІМНАТА ' + (maze.roomIndex + 1);
+  $('splash-t').textContent = maze.biome().name;
+  $('splash-t').style.color = maze.biome().accent;
+  $('splash').classList.add('on');
+  setTimeout(() => $('splash').classList.remove('on'), 1900);
+}
+
+function enterNextRoom() {
+  maze.nextRoom();
+  camReady = false;          // камера стрибає на нову стартову клітину без анімації
+  $('door-icon').textContent = '🔒';
+  pickDoorKey();
+  renderLegend();
+  renderRoomLabel();
+  updateHud();
+  showRoomSplash();
+  setTimeout(playNext, 2100);   // черга продовжиться вже в новій кімнаті
 }
 
 // ─── Транзакції ────────────────────────────────────────────────────────────
@@ -298,7 +498,7 @@ function onTransaction(tx) {
     if (!action) return;
     const qty = Math.max(1, Math.round(Number(p.quantity) || 1));
     for (let i = 0; i < qty; i++) {
-      enqueue(p.name, action, qty > 1 ? (i + 1) + '/' + qty : '');
+      enqueue(p.name, action, qty > 1 ? (i + 1) + '/' + qty : '', p.product_id);
     }
   });
 }
@@ -324,6 +524,10 @@ document.addEventListener('keydown', e => {
     queue.length = 0;
     maze.restart();
     camReady = false;
+    $('door-icon').textContent = '🔒';
+    pickDoorKey();
+    renderLegend();
+    renderRoomLabel();
     updateHud();
   }
 });
@@ -341,6 +545,7 @@ fitCanvas();
 fitMinimap();
 loadTaps();
 connect();
+renderRoomLabel();
 updateHud();
 requestAnimationFrame(frame);
 </script>
