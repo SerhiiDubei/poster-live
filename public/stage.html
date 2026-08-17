@@ -23,17 +23,11 @@
   }
 
   /* ─── Верхній рядок: мінімум ────────────────────────────── */
-  .top {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 3;
-    display: flex; align-items: center; gap: 22px;
-    padding: 14px 20px;
-    font-size: 7px; color: #4e6b46;
-    background: linear-gradient(#080f09cc, #080f0900);
-    pointer-events: none;
-  }
-  .top b { color: #93b57c; font-weight: normal; }
-  .dot { width: 6px; height: 6px; background: #34482f; margin-left: auto; }
-  .dot.on { background: #6e8f5a; box-shadow: 0 0 8px #6e8f5a; }
+  /* Лічильники й підказки клавіш з екрана прибрані: на проекції має бути
+     тільки те, що гість може прочитати як частину гри. Єдине, що лишилось
+     від службового, — крапка звʼязку в кутку картки, для оператора. */
+  .dot { width: 5px; height: 5px; background: #34482f; margin-left: auto; }
+  .dot.on { background: #6e8f5a; box-shadow: 0 0 6px #6e8f5a; }
 
   /* ─── Мінікарта ─────────────────────────────────────────── */
   .map-wrap {
@@ -45,6 +39,7 @@
   }
   #minimap { display: block; image-rendering: pixelated; }
   .map-label {
+    display: flex; align-items: center;
     font-size: 6px; color: #3e5738; letter-spacing: 0.12em;
     padding: 5px 2px 1px;
   }
@@ -204,24 +199,11 @@
   }
   .prize-sec { font-size: 14px; color: #ffcf4a; flex: none; }
 
-  .hint {
-    position: fixed; right: 18px; bottom: 16px; z-index: 3;
-    font-size: 6px; color: #1e2b1d; letter-spacing: 0.1em;
-  }
 </style>
 </head>
 <body>
 
 <canvas id="game"></canvas>
-
-<div class="top">
-  <span>КІМНАТА <b id="t-room">1 · ЛІС</b></span>
-  <span>КРОКИ <b id="t-steps">0</b></span>
-  <span>ФРУКТИ <b id="t-fruits">0/0</b></span>
-  <span>ВІДКРИТО <b id="t-reveal">0%</b></span>
-  <span>СЛОТИ <b id="t-slots">5</b></span>
-  <span class="dot" id="dot"></span>
-</div>
 
 <div class="door" id="door">
   <div class="door-icon" id="door-icon">🔒</div>
@@ -238,7 +220,7 @@
 
 <div class="map-wrap">
   <canvas id="minimap"></canvas>
-  <div class="map-label">КАРТА</div>
+  <div class="map-label">КАРТА<span class="dot" id="dot"></span></div>
 </div>
 
 <div class="legend" id="legend"></div>
@@ -282,8 +264,6 @@
   </div>
   <div class="prize-sec" id="prize-sec">60</div>
 </div>
-
-<div class="hint">F — ПОВНИЙ ЕКРАН · R — НОВЕ ПОЛЕ · S — СЛОТ</div>
 
 <script src="/maze-core.js"></script>
 <script src="/beer-groups.js"></script>
@@ -343,11 +323,8 @@ function frame(t) {
 }
 
 // ─── HUD ───────────────────────────────────────────────────────────────────
+// Лічильники з екрана прибрані, лишився тільки екран перемоги.
 function updateHud() {
-  $('t-steps').textContent  = maze.steps;
-  $('t-fruits').textContent = maze.fruitsGot() + '/' + maze.fruitTotal;
-  $('t-reveal').textContent = maze.revealPct() + '%';
-  $('t-slots').textContent  = maze.slotCount;
   $('win').classList.toggle('on', maze.won);
   if (maze.won) $('win-s').textContent = 'КРОКІВ: ' + maze.steps + '\nФРУКТІВ: ' + maze.fruitsGot() + '/' + maze.fruitTotal;
 }
@@ -409,10 +386,6 @@ function renderDoorBanner() {
   $('door-state').textContent = maze.doorOpen ? 'ДВЕРІ ВІДЧИНЕНО — ЙДИ ДО НИХ' : 'ЩОБ ВІДЧИНИТИ ДВЕРІ — ЗАМОВ';
   el.classList.toggle('open', maze.doorOpen);
   el.classList.add('on');
-}
-
-function renderRoomLabel() {
-  $('t-room').textContent = (maze.roomIndex + 1) + ' · ' + maze.biome().name;
 }
 
 // ─── Легенда: чотири групи пива, по одній на напрямок ──────────────────────
@@ -634,7 +607,6 @@ function enterNextRoom() {
   $('door-icon').textContent = '🔒';
   pickDoorKey();
   renderLegend();
-  renderRoomLabel();
   updateHud();
   showRoomSplash();
   setTimeout(playNext, 2100);   // черга продовжиться вже в новій кімнаті
@@ -680,7 +652,6 @@ document.addEventListener('keydown', e => {
     $('prize').classList.remove('on');
     pickDoorKey();
     renderLegend();
-    renderRoomLabel();
     updateHud();
   }
   // S — прокрутити слот вручну: для перевірки перед івентом і для бармена
@@ -700,7 +671,6 @@ fitCanvas();
 fitMinimap();
 loadCatalog();
 connect();
-renderRoomLabel();
 updateHud();
 requestAnimationFrame(frame);
 </script>
