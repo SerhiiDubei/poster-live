@@ -77,6 +77,9 @@ const MAZE_BIOMES = [
 class Maze {
   // Вісім напрямків по колу — сусіди в масиві є сусідами й за кутом.
   static RING = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+  // Чотири базові — ne, se, sw, nw. Теж по колу, тож ковзання вздовж стіни
+  // працює однаково: беремо сусіда за кутом, просто крок більший.
+  static RING4 = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
   static FRUITS = [
     { key: 'apple',  name: 'ЯБЛУКО',   color: '#e14b4b', desc: 'ОГЛЯД +1 НА 15 КРОКІВ' },
@@ -96,6 +99,14 @@ class Maze {
     this.cornerCut = opts.cornerCut ?? true;
     this.wallDensity = opts.wallDensity ?? 0.16;   // було 0.3 — стало просторіше
     this.FRUITS = Maze.FRUITS;
+
+    // Скільки напрямків живе на полі. Чотири групи пива = чотири напрямки,
+    // тож /stage створює лабіринт з dirs: 4, а пульт лишається на восьми.
+    this.ring = opts.dirs === 4 ? Maze.RING4 : Maze.RING;
+
+    // Слоти — безкоштовне пиво, заховане в лабіринті. Лічильник спільний на
+    // всю сесію: скільки лишилось, стільки й розкладається в наступній кімнаті.
+    this.slotCount = opts.slots ?? 0;
 
     this.steps = 0;
     this.won = false;
@@ -175,6 +186,13 @@ class Maze {
     for (let i = 0; i < Math.min(K, cells.length); i++) this.fruits.set(cells[i], i % this.FRUITS.length);
     this.fruitTotal = this.fruits.size;
 
+    // Слоти лягають на клітини, не зайняті фруктами, ближче до кінця списку —
+    // щоб не збиралися купкою біля старту разом із фруктами.
+    this.slots = new Set();
+    for (let i = cells.length - 1; i >= 0 && this.slots.size < this.slotCount; i--) {
+      if (!this.fruits.has(cells[i])) this.slots.add(cells[i]);
+    }
+
     this.reveal();
   }
 
@@ -249,11 +267,12 @@ class Maze {
     if (dx === 0 && dy === 0) return { d: [0, 0], slid: false };
     if (this.validMove(dx, dy)) return { d: [dx, dy], slid: false };
 
-    const ring = Maze.RING;
+    const ring = this.ring;
+    const n = ring.length;
     const i = ring.findIndex(v => v[0] === dx && v[1] === dy);
     if (i < 0) return null;
-    for (let off = 1; off <= 4; off++) {
-      for (const j of [(i + off) % 8, (i - off + 8) % 8]) {
+    for (let off = 1; off <= n / 2; off++) {
+      for (const j of [(i + off) % n, (i - off + n) % n]) {
         const [nx, ny] = ring[j];
         if (this.validMove(nx, ny)) return { d: [nx, ny], slid: true };
       }
@@ -279,6 +298,12 @@ class Maze {
       if (fruit.key === 'cherry') this.reveal(3);
       if (fruit.key === 'orange') this.doorFound = true;
     }
+    let slot = false;
+    if (this.slots.has(idx)) {
+      this.slots.delete(idx);
+      this.slotCount = Math.max(0, this.slotCount - 1);
+      slot = true;
+    }
     this.reveal();
 
     this.steps++;
@@ -286,7 +311,7 @@ class Maze {
 
     let result = 'moved';
     if (this.atDoor()) result = this.doorOpen ? 'door-open' : 'door-locked';
-    return { result, fruit };
+    return { result, fruit, slot };
   }
 
   restart() {
@@ -398,6 +423,8 @@ class Maze {
     const CHERRY = ['...T....', '..T.T...', '.T...T..', '.T...T..', 'RR...RR.', 'RRR.RRR.', 'RR...RR.', '........'];
     const ORANGE = ['...T....', '..OOO...', '.OOOOO..', '.OWOOO..', '.OOOOO..', '..OOO...', '........', '........'];
     const ARROW  = ['...AA...', '..AAAA..', '.AAAAAA.', '...AA...', '...AA...', '...AA...', '........', '........'];
+    // Слот: кухоль із шапкою піни — виграш видно з іншого кінця залу
+    const MUG    = ['..PPPP..', '.PWWWWP.', '.GYYYYG.', '.GYYYYGG', '.GYYYYG.', '.GYYYYGG', '.GGGGGG.', '........'];
 
     const fc = { T: '#5a3a2e', G: '#6e8f5a', R: '#e14b4b', W: '#f2c9a0', Y: '#ffcf4a', O: '#ff9f2e' };
     const cc = { T: '#5a3a2e', R: '#e14b6e' };
@@ -410,6 +437,7 @@ class Maze {
       apple:  sprite(APPLE, fc), banana: sprite(BANANA, fc),
       cherry: sprite(CHERRY, cc), orange: sprite(ORANGE, fc),
       arrow:  sprite1(ARROW, { A: '#ffcf4a' }),
+      slot:   sprite(MUG, { P: '#fff6dd', W: '#f2ead6', G: '#d8cbb0', Y: '#ffb31f' }),
       arrows: {},
     };
     Object.entries(MAZE_DIR_COLORS).forEach(([key, color]) => {
@@ -478,6 +506,16 @@ class Maze {
             const f = this.FRUITS[this.fruits.get(idx)];
             ctx.drawImage(this.T[f.key], sx + 8, sy - 6 - Math.floor(t / 300) % 2);
           }
+          if (this.slots.has(idx)) {
+            // Слот пульсує помітніше за фрукт: сяйво під кухлем + вища амплітуда
+            const glow = 0.20 + 0.12 * Math.sin(t / 260);
+            ctx.globalAlpha = glow;
+            ctx.translate(sx, sy);
+            this.diamondRows(ctx, 0, '#ffcf4a');
+            ctx.translate(-sx, -sy);
+            ctx.globalAlpha = 1;
+            ctx.drawImage(this.T.slot, sx + 8, sy - 7 - Math.floor(t / 200) % 3);
+          }
           if (x === px && y === py) ctx.drawImage(this.T.hero, sx + 8, sy - 7 - bob);
         }
       }
@@ -494,7 +532,7 @@ class Maze {
     const [px, py] = this.player;
     const pulse = 0.09 + 0.04 * Math.sin(t / 300);
 
-    for (const [dx, dy] of Maze.RING) {
+    for (const [dx, dy] of this.ring) {
       if (!this.validMove(dx, dy)) continue;
 
       const [sx, sy] = this.iso(px + dx, py + dy);
@@ -562,6 +600,10 @@ class Maze {
       if (this.grid[y][x] === 0 && this.fruits.has(idx)) {
         ctx.fillStyle = this.FRUITS[this.fruits.get(idx)].color;
         ctx.fillRect(x * cell + 1, y * cell + 1, Math.max(1, cell - 2), Math.max(1, cell - 2));
+      }
+      if (this.grid[y][x] === 0 && this.slots.has(idx)) {
+        ctx.fillStyle = (Math.floor(t / 320) % 2) ? '#ffcf4a' : '#fff6dd';
+        ctx.fillRect(x * cell, y * cell, cell, cell);
       }
     }
 

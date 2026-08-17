@@ -144,6 +144,66 @@
   .win-t { font-size: 26px; color: #ffcf4a; text-shadow: 3px 3px 0 #48613a; }
   .win-s { font-size: 10px; color: #93b57c; line-height: 2; text-align: center; }
 
+  /* ─── Слот: безкоштовне пиво ────────────────────────────── */
+  /* Три фази: барабан крутиться → зупиняється на призі → плашка з таймером
+     їде в куток і висить до кінця хвилини, поки гра йде далі. */
+  .slot {
+    position: fixed; inset: 0; z-index: 8;
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    background: #050805f2;
+  }
+  .slot.on { display: flex; }
+  .slot-t {
+    font-size: 11px; color: #ffcf4a; letter-spacing: 0.3em;
+    animation: slot-blink 0.5s steps(2, end) infinite;
+  }
+  @keyframes slot-blink { 50% { opacity: 0.25; } }
+  .slot-reel {
+    min-width: min(74vw, 780px); max-width: min(74vw, 780px);
+    padding: 26px 30px; text-align: center;
+    border: 4px solid #ffcf4a; background: #141008;
+    box-shadow: 0 6px 0 #04080a, 0 0 44px #ffcf4a33;
+  }
+  .slot-name {
+    font-size: 20px; line-height: 1.5; color: #fff;
+    overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+    -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  }
+  .slot-cat { font-size: 8px; margin-top: 14px; letter-spacing: 0.16em; }
+  .slot-take { font-size: 12px; color: #93b57c; letter-spacing: 0.18em; opacity: 0; }
+  .slot.done .slot-take { opacity: 1; }
+  .slot.done .slot-reel { animation: slot-pop 0.5s ease-out; }
+  @keyframes slot-pop {
+    0%   { transform: scale(0.9); box-shadow: 0 6px 0 #04080a, 0 0 0 #ffcf4a00; }
+    45%  { transform: scale(1.06); box-shadow: 0 6px 0 #04080a, 0 0 90px #ffcf4aaa; }
+    100% { transform: scale(1); }
+  }
+  /* Іскри — вісім пікселів, що розлітаються від центру рамки */
+  .spark { position: absolute; width: 6px; height: 6px; background: #ffcf4a; opacity: 0; }
+  .slot.done .spark { animation: spark-fly 0.85s ease-out forwards; }
+  @keyframes spark-fly {
+    0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.4); }
+  }
+
+  /* Плашка призу: висить у кутку решту хвилини */
+  .prize {
+    position: fixed; right: 18px; bottom: 42px; z-index: 5;
+    display: none; align-items: center; gap: 14px;
+    padding: 12px 18px; background: #141008f2;
+    border: 3px solid #ffcf4a; box-shadow: 0 4px 0 #04080a;
+    max-width: min(38vw, 420px);
+  }
+  .prize.on { display: flex; }
+  .prize-icon { font-size: 18px; flex: none; }
+  .prize-t { font-size: 6px; color: #ffcf4a; letter-spacing: 0.16em; }
+  .prize-name {
+    font-size: 9px; color: #fff; margin-top: 7px; line-height: 1.5;
+    overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .prize-sec { font-size: 14px; color: #ffcf4a; flex: none; }
+
   .hint {
     position: fixed; right: 18px; bottom: 16px; z-index: 3;
     font-size: 6px; color: #1e2b1d; letter-spacing: 0.1em;
@@ -159,6 +219,7 @@
   <span>КРОКИ <b id="t-steps">0</b></span>
   <span>ФРУКТИ <b id="t-fruits">0/0</b></span>
   <span>ВІДКРИТО <b id="t-reveal">0%</b></span>
+  <span>СЛОТИ <b id="t-slots">5</b></span>
   <span class="dot" id="dot"></span>
 </div>
 
@@ -204,18 +265,42 @@
   <div class="win-s" id="win-s"></div>
 </div>
 
-<div class="hint">F — ПОВНИЙ ЕКРАН · R — НОВЕ ПОЛЕ</div>
+<div class="slot" id="slot">
+  <div class="slot-t">БЕЗКОШТОВНЕ ПИВО</div>
+  <div class="slot-reel" id="slot-reel">
+    <div class="slot-name" id="slot-name"></div>
+    <div class="slot-cat" id="slot-cat"></div>
+  </div>
+  <div class="slot-take">ЗАБЕРИ НА БАРІ</div>
+</div>
+
+<div class="prize" id="prize">
+  <div class="prize-icon">🍺</div>
+  <div>
+    <div class="prize-t">ВИГРАШ — ЗАБЕРИ НА БАРІ</div>
+    <div class="prize-name" id="prize-name"></div>
+  </div>
+  <div class="prize-sec" id="prize-sec">60</div>
+</div>
+
+<div class="hint">F — ПОВНИЙ ЕКРАН · R — НОВЕ ПОЛЕ · S — СЛОТ</div>
 
 <script src="/maze-core.js"></script>
+<script src="/beer-groups.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
-const VIEW_H   = 108;    // логічна висота кадру: що менша, то сильніший зум
-const STEP_MS  = 750;    // пауза між кроками з черги
-const TAPS_KEY = 'poster_taps_v1';     // спільний список кранів з /taps
-const MAP_KEY  = 'poster_maze_map_v1'; // мапінг, налаштований на /maze
+const VIEW_H    = 108;   // логічна висота кадру: що менша, то сильніший зум
+const SHOW_MS   = 1500;  // скільки видно «що купили», перш ніж герой піде
+const STEP_MS   = 900;   // пауза після ходу, перед наступною покупкою
+const SLOTS     = 5;     // безкоштовних пив на сесію
+const PRIZE_MS  = 60000; // скільки виграш висить на екрані
+const REEL_MS   = 2200;  // скільки крутиться барабан
 
-const maze = new Maze();
+// Кольори стрілок на полі = кольори груп у легенді
+beerApplyDirColors();
+
+const maze = new Maze({ dirs: 4, slots: SLOTS });
 const cv   = $('game');
 const ctx  = cv.getContext('2d');
 const mini = $('minimap');
@@ -262,6 +347,7 @@ function updateHud() {
   $('t-steps').textContent  = maze.steps;
   $('t-fruits').textContent = maze.fruitsGot() + '/' + maze.fruitTotal;
   $('t-reveal').textContent = maze.revealPct() + '%';
+  $('t-slots').textContent  = maze.slotCount;
   $('win').classList.toggle('on', maze.won);
   if (maze.won) $('win-s').textContent = 'КРОКІВ: ' + maze.steps + '\nФРУКТІВ: ' + maze.fruitsGot() + '/' + maze.fruitTotal;
 }
@@ -290,52 +376,26 @@ function showFruit(fruit) {
   fruitTimer = setTimeout(() => $('fruit').classList.remove('on'), 4200);
 }
 
-// ─── Крани і мапінг ────────────────────────────────────────────────────────
-let taps = [];
-let mapping = {};
+// ─── Каталог пива ──────────────────────────────────────────────────────────
+// Меню потрібне тільки для слотів: група покупки рахується з назви прямо в
+// транзакції, тож жодного мапінгу кранів більше немає.
+let beerPool = [];
 
-function defaultActionFor(i) { return MAZE_ACTIONS[Math.min(3, Math.floor(i / 3))].key; }
-
-function actionForProduct(productId) {
-  const key = mapping[String(productId)];
-  if (key) return mazeActionByKey(key);
-  const i = taps.findIndex(t => String(t.product_id) === String(productId));
-  return i >= 0 ? mazeActionByKey(defaultActionFor(i)) : null;
-}
-
-async function loadTaps() {
-  try { mapping = JSON.parse(localStorage.getItem(MAP_KEY) || '{}'); } catch (_) { mapping = {}; }
-
-  let all = [];
+async function loadCatalog() {
   try {
     const data = await (await fetch('/api/products')).json();
-    all = (data.products || []).filter(p => p.name);
-  } catch (_) { return; }
-
-  const byId = new Map(all.map(p => [String(p.product_id), p]));
-  let saved = [];
-  try { saved = JSON.parse(localStorage.getItem(TAPS_KEY) || '[]'); } catch (_) {}
-  taps = saved.map(id => byId.get(String(id))).filter(Boolean);
-
-  if (taps.length < 12) {
-    const chosen = new Set(taps.map(p => String(p.product_id)));
-    for (const p of all) {
-      if (taps.length >= 12) break;
-      if (p.price > 0 && !chosen.has(String(p.product_id))) { taps.push(p); chosen.add(String(p.product_id)); }
-    }
-  }
-  taps = taps.slice(0, 12);
+    beerPool = (data.products || []).filter(p => p.name && beerGroupFor(p.name, p.category));
+  } catch (_) { beerPool = []; }
   pickDoorKey();
   renderLegend();
 }
 
 // ─── Ключ від дверей ───────────────────────────────────────────────────────
-// Одне з дванадцяти пив стає ключем поточної кімнати. Ядро гри не знає про
-// Poster — воно лише зберігає {id, name}, а вибір робить сторінка.
+// Ключ — не конкретна позиція, а ціла група: «замов темне». Інакше з 1300
+// найменувань шанс, що хтось візьме саме потрібну пляшку, майже нульовий.
 function pickDoorKey() {
-  if (!taps.length) return;
-  const p = taps[Math.floor(Math.random() * taps.length)];
-  maze.setDoorKey({ id: p.product_id, name: p.name });
+  const g = BEER_GROUPS[Math.floor(Math.random() * BEER_GROUPS.length)];
+  maze.setDoorKey({ id: g.key, name: g.name, group: g.key });
   renderDoorBanner();
 }
 
@@ -343,7 +403,9 @@ function renderDoorBanner() {
   const k = maze.doorKey;
   const el = $('door');
   if (!k) { el.classList.remove('on'); return; }
-  $('door-beer').textContent = k.name;
+  const g = beerGroupByKey(k.group);
+  $('door-beer').textContent = k.name + (g ? '  ' + g.arrow : '');
+  $('door-beer').style.color = maze.doorOpen ? '#ffcf4a' : (g ? g.color : '#fff');
   $('door-state').textContent = maze.doorOpen ? 'ДВЕРІ ВІДЧИНЕНО — ЙДИ ДО НИХ' : 'ЩОБ ВІДЧИНИТИ ДВЕРІ — ЗАМОВ';
   el.classList.toggle('open', maze.doorOpen);
   el.classList.add('on');
@@ -353,116 +415,203 @@ function renderRoomLabel() {
   $('t-room').textContent = (maze.roomIndex + 1) + ' · ' + maze.biome().name;
 }
 
-// ─── Легенда: групуємо крани за напрямком, колір збігається зі стрілкою ─────
-const groupEls = {};   // actionKey -> { box, beers: Map(product_id -> el) }
+// ─── Легенда: чотири групи пива, по одній на напрямок ──────────────────────
+const groupEls = {};   // groupKey -> { box, last }
 
 function renderLegend() {
   const box = $('legend');
   box.textContent = '';
   Object.keys(groupEls).forEach(k => delete groupEls[k]);
 
-  const byAction = new Map();
-  taps.forEach(p => {
-    const a = actionForProduct(p.product_id);
-    if (!a) return;
-    if (!byAction.has(a.key)) byAction.set(a.key, { action: a, items: [] });
-    byAction.get(a.key).items.push(p);
-  });
-
-  // Порядок як у MAZE_ACTIONS, щоб групи не стрибали між перезавантаженнями
-  MAZE_ACTIONS.forEach(a => {
-    const g = byAction.get(a.key);
-    if (!g) return;
-    const color = mazeColorForKey(a.key);
-
+  BEER_GROUPS.forEach(g => {
     const wrap = document.createElement('div');
     wrap.className = 'lg-group';
-    wrap.style.borderLeftColor = color;
+    wrap.style.borderLeftColor = g.color;
 
     const arrow = document.createElement('div');
     arrow.className = 'lg-arrow';
-    arrow.style.color = color;
-    arrow.textContent = a.arrow;
+    arrow.style.color = g.color;
+    arrow.textContent = g.arrow;
 
-    const beers = document.createElement('div');
-    beers.className = 'lg-beers';
+    const body = document.createElement('div');
+    body.className = 'lg-beers';
 
-    const map = new Map();
-    g.items.forEach(p => {
-      const el = document.createElement('div');
-      el.className = 'lg-beer';
-      el.textContent = p.name;
-      el.title = p.name;
-      beers.appendChild(el);
-      map.set(String(p.product_id), el);
-    });
+    const title = document.createElement('div');
+    title.className = 'lg-beer';
+    title.style.color = g.color;
+    title.style.fontSize = '10px';
+    title.textContent = g.name;
 
-    wrap.append(arrow, beers);
+    const hint = document.createElement('div');
+    hint.className = 'lg-beer';
+    hint.textContent = g.hint;
+
+    // Тут показуємо останнє куплене з групи — щоб гість бачив живий приклад
+    const last = document.createElement('div');
+    last.className = 'lg-beer';
+    last.style.color = '#6e8f5a';
+
+    body.append(title, hint, last);
+    wrap.append(arrow, body);
     box.appendChild(wrap);
-    groupEls[a.key] = { box: wrap, beers: map };
+    groupEls[g.key] = { box: wrap, last };
   });
 }
 
-// Підсвітити куплену позицію в легенді
+// Підсвітити групу, з якої щойно купили
 const flashTimers = {};
-function flashLegend(productId, actionKey) {
-  const g = groupEls[actionKey];
+function flashLegend(groupKey, beerName) {
+  const g = groupEls[groupKey];
   if (!g) return;
-  const el = g.beers.get(String(productId));
   g.box.classList.add('flash');
-  if (el) el.classList.add('hit');
-  clearTimeout(flashTimers[actionKey]);
-  flashTimers[actionKey] = setTimeout(() => {
+  if (beerName) { g.last.textContent = beerName; g.last.classList.add('hit'); }
+  clearTimeout(flashTimers[groupKey]);
+  flashTimers[groupKey] = setTimeout(() => {
     g.box.classList.remove('flash');
-    if (el) el.classList.remove('hit');
-  }, STEP_MS + 1500);
+    g.last.classList.remove('hit');
+  }, SHOW_MS + STEP_MS + 1500);
 }
 
 // ─── Черга ходів ───────────────────────────────────────────────────────────
+// Кожна покупка програється у дві фази: спершу на екрані зʼявляється, що саме
+// купили, і тільки через SHOW_MS герой робить хід. Так гість встигає повʼязати
+// свій келих із рухом на стіні.
 const queue = [];
 let playing = false;
+let paused = false;      // на час слот-анімації черга стоїть
 
-function enqueue(beerName, action, label, productId) {
-  queue.push({ beerName, action, label, productId });
-  if (!playing) playNext();
+function enqueue(beerName, group, label) {
+  queue.push({ beerName, group, label });
+  if (!playing && !paused) playNext();
 }
 
 function playNext() {
+  if (paused) { playing = false; return; }
   const item = queue.shift();
   if (!item) { playing = false; return; }
   playing = true;
 
-  const ownColor = mazeColorForKey(item.action.key);
-  flashLegend(item.productId, item.action.key);
+  const g = item.group;
+  flashLegend(g.key, item.beerName);
 
-  // Куплено ключ-пиво — двері відмикаються, навіть якщо герой далеко від них
-  if (maze.isDoorKey(item.productId) && !maze.doorOpen) {
+  // Фаза 1 — тільки покупка, ходу ще немає
+  showCall(item.beerName, '🍺', 'КУПЛЕНО · ' + g.name, false, item.label, g.color);
+  setTimeout(() => doMove(item), SHOW_MS);
+}
+
+// Фаза 2 — власне хід
+function doMove(item) {
+  const g = item.group;
+  const action = mazeActionByKey(g.dir);
+
+  // Куплено пиво з групи-ключа — двері відмикаються, навіть якщо герой далеко
+  if (maze.doorKey && maze.doorKey.group === g.key && !maze.doorOpen) {
     maze.openDoor();
     maze.doorFound = true;          // і одразу показуємо, де вони
     renderDoorBanner();
-    showKeyUnlocked(item.beerName);
+    showKeyUnlocked(g.name);
   }
 
-  const resolved = maze.resolveDirection(item.action.d[0], item.action.d[1]);
+  const resolved = maze.resolveDirection(action.d[0], action.d[1]);
   if (!resolved) {
-    showCall(item.beerName, item.action.arrow, 'ГЛУХИЙ КУТ', false, item.label, ownColor);
+    showCall(item.beerName, '⤫', 'ГЛУХИЙ КУТ', false, item.label, '#9aa0a8');
+    updateHud();
+    setTimeout(playNext, STEP_MS);
+    return;
+  }
+
+  const { fruit, result, slot } = maze.move(resolved.d[0], resolved.d[1]);
+  if (fruit) showFruit(fruit);
+
+  if (result === 'door-locked') {
+    showCall(item.beerName, '🔒', 'ДВЕРІ ЗАМКНЕНІ', false, item.label, '#9aa0a8');
+  } else if (resolved.slid) {
+    // Стрілка й рамка беруть колір фактичного напрямку — того, куди герой пішов
+    showCall(item.beerName, mazeArrowForVec(resolved.d),
+      'ОБХІД СТІНИ ' + action.arrow + '→' + mazeArrowForVec(resolved.d),
+      true, item.label, mazeColorForVec(resolved.d));
   } else {
-    const { fruit, result } = maze.move(resolved.d[0], resolved.d[1]);
-    if (fruit) showFruit(fruit);
-    if (result === 'door-locked') showCall(item.beerName, '🔒', 'ДВЕРІ ЗАМКНЕНІ', false, item.label, '#9aa0a8');
-    if (result === 'door-open') { enterNextRoom(); return; }
-    if (resolved.slid) {
-      // Стрілка й рамка беруть колір фактичного напрямку — того, куди герой пішов
-      showCall(item.beerName, mazeArrowForVec(resolved.d),
-        'ОБХІД СТІНИ ' + item.action.arrow + '→' + mazeArrowForVec(resolved.d),
-        true, item.label, mazeColorForVec(resolved.d));
-    } else {
-      showCall(item.beerName, item.action.arrow, item.action.name, false, item.label, ownColor);
-    }
+    showCall(item.beerName, action.arrow, g.name + ' ' + action.arrow, false, item.label, g.color);
   }
 
   updateHud();
+
+  // Слот важливіший за двері: спершу віддаємо виграш, кімната зачекає
+  if (slot) { openSlot(result === 'door-open'); return; }
+  if (result === 'door-open') { enterNextRoom(); return; }
   setTimeout(playNext, STEP_MS);
+}
+
+// ─── Слот: безкоштовне пиво ────────────────────────────────────────────────
+// Барабан крутить назви з меню, зупиняється на призі, показує анімацію
+// виграшу — і їде в куток дотикати хвилину, поки гра йде далі.
+let reelTimer, prizeTimer, prizeTick;
+
+function openSlot(thenNextRoom) {
+  if (!beerPool.length) { setTimeout(playNext, STEP_MS); return; }
+  paused = true;
+
+  const prize = beerPool[Math.floor(Math.random() * beerPool.length)];
+  const pg = beerGroupFor(prize.name, prize.category);
+
+  $('slot').classList.remove('done');
+  $('slot').classList.add('on');
+  $('slot-cat').textContent = '';
+
+  clearInterval(reelTimer);
+  reelTimer = setInterval(() => {
+    const r = beerPool[Math.floor(Math.random() * beerPool.length)];
+    $('slot-name').textContent = r.name;
+    $('slot-name').style.color = '#8a7a55';
+  }, 70);
+
+  setTimeout(() => {
+    clearInterval(reelTimer);
+    $('slot-name').textContent = prize.name;
+    $('slot-name').style.color = '#fff';
+    $('slot-cat').textContent = (pg ? pg.name + ' · ' : '') + (prize.category || '');
+    $('slot-cat').style.color = pg ? pg.color : '#93b57c';
+    $('slot').classList.add('done');
+    spawnSparks();
+  }, REEL_MS);
+
+  // Повний екран гасне, приз переїжджає в куток і дотикає до хвилини
+  setTimeout(() => {
+    $('slot').classList.remove('on');
+    showPrizeBanner(prize.name, PRIZE_MS - (REEL_MS + 2800));
+    paused = false;
+    updateHud();
+    if (thenNextRoom) enterNextRoom(); else setTimeout(playNext, STEP_MS);
+  }, REEL_MS + 2800);
+}
+
+function spawnSparks() {
+  const reel = $('slot-reel');
+  reel.querySelectorAll('.spark').forEach(s => s.remove());
+  for (let i = 0; i < 10; i++) {
+    const s = document.createElement('div');
+    s.className = 'spark';
+    const a = (Math.PI * 2 * i) / 10;
+    s.style.setProperty('--dx', Math.round(Math.cos(a) * 190) + 'px');
+    s.style.setProperty('--dy', Math.round(Math.sin(a) * 130) + 'px');
+    s.style.left = '50%';
+    s.style.top  = '50%';
+    reel.appendChild(s);
+  }
+}
+
+function showPrizeBanner(name, ms) {
+  $('prize-name').textContent = name;
+  $('prize').classList.add('on');
+  const until = Date.now() + ms;
+  clearInterval(prizeTick);
+  prizeTick = setInterval(() => {
+    const left = Math.max(0, Math.round((until - Date.now()) / 1000));
+    $('prize-sec').textContent = left;
+    if (left <= 0) clearInterval(prizeTick);
+  }, 250);
+  clearTimeout(prizeTimer);
+  prizeTimer = setTimeout(() => $('prize').classList.remove('on'), ms);
 }
 
 // ─── Ключ і перехід у наступну кімнату ─────────────────────────────────────
@@ -494,11 +643,12 @@ function enterNextRoom() {
 // ─── Транзакції ────────────────────────────────────────────────────────────
 function onTransaction(tx) {
   (tx.products || []).forEach(p => {
-    const action = actionForProduct(p.product_id);
-    if (!action) return;
+    // Горішки, кава, посуд і пакування гру не рухають узагалі
+    const g = beerGroupFor(p.name, p.category);
+    if (!g) return;
     const qty = Math.max(1, Math.round(Number(p.quantity) || 1));
     for (let i = 0; i < qty; i++) {
-      enqueue(p.name, action, qty > 1 ? (i + 1) + '/' + qty : '', p.product_id);
+      enqueue(p.name, g, qty > 1 ? (i + 1) + '/' + qty : '');
     }
   });
 }
@@ -522,14 +672,19 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'r' || e.key === 'R') {
     queue.length = 0;
+    paused = false;
+    maze.slotCount = SLOTS;      // нова сесія — знову пʼять безкоштовних
     maze.restart();
     camReady = false;
     $('door-icon').textContent = '🔒';
+    $('prize').classList.remove('on');
     pickDoorKey();
     renderLegend();
     renderRoomLabel();
     updateHud();
   }
+  // S — прокрутити слот вручну: для перевірки перед івентом і для бармена
+  if ((e.key === 's' || e.key === 'S') && !paused) openSlot(false);
 });
 
 let cursorTimer;
@@ -543,7 +698,7 @@ window.addEventListener('resize', fitCanvas);
 
 fitCanvas();
 fitMinimap();
-loadTaps();
+loadCatalog();
 connect();
 renderRoomLabel();
 updateHud();
